@@ -9,6 +9,21 @@
 
 ---
 
+# VS Code Extension Installation
+
+**Windows:**
+1.  Navigate to `C:\Users\<YourUser>\.vscode\extensions`.
+2.  Copy the `lunite-vscode` folder into this directory.
+3.  Restart VS Code.
+
+**macOS / Linux:**
+1.  Open Terminal.
+2.  Run `cd ~/.vscode/extensions`.
+3.  Copy the `lunite-vscode` folder here.
+4.  Restart VS Code.
+
+---
+
 # Lunite User Manual
 
 ## Notes
