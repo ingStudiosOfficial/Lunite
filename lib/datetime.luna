@@ -1,0 +1,30 @@
+~~ Lunite Library
+~~ DateTime Library
+~~ v1.0 by ANW
+
+class DateTime {
+    let ts = 0
+    let data = null
+
+    func now() {
+        this.ts = time()
+        this.data = date_struct(this.ts)
+    }
+
+    func from_timestamp(timestamp) {
+        this.ts = timestamp
+        this.data = date_struct(timestamp)
+    }
+
+    func year() { return this.data["year"] }
+    func month() { return this.data["month"] }
+    func day() { return this.data["day"] }
+    func hour() { return this.data["hour"] }
+    func minute() { return this.data["minute"] }
+    func second() { return this.data["second"] }
+    
+    func to_string() {
+        return str(this.year()) + "-" + str(this.month()) + "-" + str(this.day()) + 
+               " " + str(this.hour()) + ":" + str(this.minute()) + ":" + str(this.second())
+    }
+}

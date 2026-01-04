@@ -1,0 +1,26 @@
+~~ Lunite Library
+~~ File IO Wrapper
+~~ v1.0 by ANW
+
+class File {
+    let path = ""
+    
+    func init(p) {
+        this.path = p
+    }
+
+    func read() {
+        return read_file(this.path)
+    }
+
+    func write(content) {
+        write_file(this.path, content)
+    }
+
+    func exists() {
+        ~~ Hack: try reading, if null, assume error/missing :3
+        let res = read_file(this.path)
+        if (res == null) { return false }
+        return true
+    }
+}

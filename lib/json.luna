@@ -1,0 +1,24 @@
+~~ Lunite Library
+~~ JSON Wrapper Library
+~~ v1.0 by ANW
+
+class JSON {
+    func parse(text) {
+        return json_decode(text)
+    }
+    
+    func stringify(data) {
+        return json_encode(data)
+    }
+    
+    func read(path) {
+        let content = read_file(path)
+        if (content == null) { return null }
+        return this.parse(content)
+    }
+    
+    func write(path, data) {
+        let text = this.stringify(data)
+        write_file(path, text)
+    }
+}

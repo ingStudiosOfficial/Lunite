@@ -1,0 +1,18 @@
+~~ Lunite Library
+~~ Simple Network Library
+~~ v1.0 by ANW
+
+class Net {
+    func get(url) {
+        return http_get(url)
+    }
+    
+    func get_json(url) {
+        let res = http_get(url)
+        return json_decode(res)
+    }
+
+    func post(url, body) {
+        return http_post(url, body)
+    }
+}
