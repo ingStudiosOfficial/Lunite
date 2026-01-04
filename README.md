@@ -3,8 +3,8 @@
 # The Lunite Programming Language
 © Lunite by ANW (Subhrajit Sain), 2025-2026
 
-**Version:** v1.8.0  
-**Language update date:** 3rd January, 2026  
+**Version:** v1.8.1  
+**Language update date:** 4th January, 2026  
 **Documentation update date:** 4th January, 2026
 
 > "Lunite is an interpreted and compiled (more like 'binded') hybrid language (OOP + POP) built with/on Python." - ANW, creator of Lunite.
@@ -39,6 +39,7 @@ https://marketplace.visualstudio.com/items?itemName=ingStudiosOfficial.lunite
 * JavaScript syntax highlighting has been used for Lunite code samples.  
 * This manual is heavily simplified to be able to learn the language's basics quickly.
 * Features unique to Lunite in the current age of programming are marked with the 🌙 (crescent moon) emoji.
+* Check commits on Github for changelogs.
 
 ## 1. Getting Started
 
