@@ -12,7 +12,7 @@
 # VS Code Extension Installation
 
 **Marketplace:**
-1. Search for `The Lunite Programming Language` by (ing) Studios.
+1. Search for `The Lunite Programming Language` by (ing) Studios. Credit goes to (ing) Studios for publishing the extension.
 2. Install the extension.
 
 **Marketplace Link:**  
