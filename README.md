@@ -1,3 +1,5 @@
+<img src="https://raw.githubusercontent.com/SubhrajitSain/Lunite/refs/heads/main/icon.png" alt="Lunite logo" width="100" height="100">  
+
 # The Lunite Programming Language
 © Lunite by ANW (Subhrajit Sain), 2025-2026
 
@@ -12,7 +14,7 @@
 # VS Code Extension Installation
 
 **Marketplace:**
-1. Search for `The Lunite Programming Language` by (ing) Studios. Credit goes to (ing) Studios for publishing the extension.
+1. Search for `The Lunite Programming Language` by (ing) Studios. Credit goes to (ing) Studios and ANW.
 2. Install the extension.
 
 **Marketplace Link:**  
