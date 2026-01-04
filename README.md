@@ -91,7 +91,42 @@ Add the directory to the path.
 export PATH="$PATH:/etc/lunite"
 ```
 
-**On Windows and On MacOS:** Instructions coming soon...
+**On Windows:**  
+Put `lunite.py` in a permanent location according to your choice, e.g., `C:\lunite\lunite.py`.  
+
+Create a file called `lunite.bat` in the same folder with:
+```batch
+@echo off
+python "C:\lunite\lunite.py" %*
+```
+
+Add `C:\lunite` (or whatever you chose) to PATH:  
+*   Press `Win + R` and enter: `sysdm.cpl`
+*   In the window, click `Advanced` and then `Environment Variables` button.
+*   Edit Path and add `C:\lunite`
+
+Restart your terminal after doing the above.  
+
+**On MacOS:**  
+
+Rename the `lunite.py` to `lunite`.
+```bash
+mv -v lunite.py lunite
+```
+
+Make it executable:
+```bash
+sudo chmod +x lunite
+```
+
+Move it to a location already in PATH (CHOOSE ONE OF THESE):
+```bash
+sudo mv -v lunite /usr/local/bin/lunite
+```
+OR for Apple Silicon:
+```bash
+sudo mv -v lunite /opt/homebrew/bin/lunite
+```
 
 ### File Extention
 Lunite's file extention is `.luna`.  
