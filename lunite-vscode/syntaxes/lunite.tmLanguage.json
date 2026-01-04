@@ -1,0 +1,194 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "Lunite",
+  "patterns": [
+    { "include": "#comments" },
+    { "include": "#fstrings" },
+    { "include": "#strings" },
+    { "include": "#classes" },
+    { "include": "#functions-def" },
+    { "include": "#keywords" },
+    { "include": "#storage" },
+    { "include": "#support" },
+    { "include": "#constants" },
+    { "include": "#functions-call" },
+    { "include": "#operators" }
+  ],
+  "repository": {
+    "comments": {
+      "patterns": [
+        {
+          "name": "comment.line.double-tilde.luna",
+          "match": "~~.*$"
+        },
+        {
+          "name": "comment.block.luna",
+          "begin": "~\\*",
+          "end": "\\*~"
+        }
+      ]
+    },
+    "fstrings": {
+      "name": "string.interpolated.luna",
+      "begin": "f\"",
+      "end": "\"",
+      "patterns": [
+        {
+          "name": "constant.character.escape.luna",
+          "match": "\\{[^}]+\\}"
+        }
+      ]
+    },
+    "strings": {
+      "patterns": [
+        {
+          "name": "string.quoted.double.luna",
+          "begin": "\"",
+          "end": "\"",
+          "patterns": [
+            { "name": "constant.character.escape.luna", "match": "\\\\." }
+          ]
+        },
+        {
+          "name": "string.quoted.single.luna",
+          "match": "'[^']'"
+        }
+      ]
+    },
+    "functions-def": {
+      "begin": "\\b(func)\\s+([a-zA-Z_]\\w*)\\s*(\\()",
+      "beginCaptures": {
+        "1": { "name": "keyword.declaration.function.luna" },
+        "2": { "name": "entity.name.function.definition.luna" },
+        "3": { "name": "punctuation.definition.parameters.begin.luna" }
+      },
+      "end": "\\)",
+      "endCaptures": {
+        "0": { "name": "punctuation.definition.parameters.end.luna" }
+      },
+      "patterns": [
+        {
+          "match": "[a-zA-Z_]\\w*",
+          "name": "variable.parameter.luna"
+        },
+        {
+          "match": "=",
+          "name": "keyword.operator.assignment.luna"
+        },
+        {
+          "include": "#strings"
+        },
+        {
+          "include": "#constants"
+        }
+      ]
+    },
+    "classes": {
+      "patterns": [
+        {
+          "match": "\\b(class)\\s+([a-zA-Z_]\\w*)\\s+(extends)\\s+([a-zA-Z_]\\w*)",
+          "captures": {
+            "1": { "name": "keyword.declaration.class.luna" },
+            "2": { "name": "entity.name.type.class.luna" },
+            "3": { "name": "keyword.declaration.extends.luna" },
+            "4": { "name": "entity.other.inherited-class.luna" }
+          }
+        },
+        {
+          "match": "\\b(class|enum)\\s+([a-zA-Z_]\\w*)",
+          "captures": {
+            "1": { "name": "keyword.declaration.class.luna" },
+            "2": { "name": "entity.name.type.class.luna" }
+          }
+        },
+        {
+          "match": "\\b(new)\\s+([a-zA-Z_]\\w*)",
+          "captures": {
+            "1": { "name": "keyword.operator.new.luna" },
+            "2": { "name": "entity.name.type.class.luna" }
+          }
+        }
+      ]
+    },
+    "keywords": {
+      "patterns": [
+        {
+          "name": "keyword.control.luna",
+          "match": "\\b(if|else|while|for|in|return|break|advance|leap|attempt|rescue|match|other|import|import_py)\\b"
+        },
+        {
+          "name": "variable.language.this.luna",
+          "match": "\\b(this)\\b"
+        },
+        {
+          "name": "keyword.operator.word.luna",
+          "match": "\\b(and|or|not|is)\\b"
+        }
+      ]
+    },
+    "storage": {
+      "patterns": [
+        {
+          "match": "\\b(let|const)\\s+([a-zA-Z_]\\w*)",
+          "captures": {
+            "1": { "name": "storage.type.luna" },
+            "2": { "name": "variable.name.luna" }
+          }
+        }
+      ]
+    },
+    "support": {
+      "patterns": [
+        {
+          "name": "support.function.builtin.luna",
+          "match": "\\b(out|in|len|type|wait|time|cmd|os_name|stop|read_file|write_file|http_get|http_post|json_encode|json_decode|raise|date_struct|to_upper|to_lower|trim|replace|split|join|args|env|read_bytes|write_bytes|mkdir|rmdir|remove|listdir|exists|path_join|getcwd)\\b"
+        },
+        {
+          "name": "support.function.math.luna",
+          "match": "\\b(sin|cos|tan|sqrt|pow|abs|round|floor|ceil|random|randint|range)\\b"
+        },
+        {
+          "name": "support.class.builtin.luna",
+          "match": "\\b(Regex)\\b"
+        },
+        {
+          "name": "support.type.primitive.luna",
+          "match": "\\b(str|int|float|bit|byte|char|bytes)\\b"
+        }
+      ]
+    },
+    "constants": {
+      "patterns": [
+        {
+          "name": "constant.numeric.float.luna",
+          "match": "\\b\\d+\\.\\d+\\b"
+        },
+        {
+          "name": "constant.numeric.integer.luna",
+          "match": "\\b\\d+\\b"
+        },
+        {
+          "name": "constant.language.luna",
+          "match": "\\b(true|false|null)\\b"
+        }
+      ]
+    },
+    "functions-call": {
+      "patterns": [
+        {
+          "match": "\\b([a-zA-Z_]\\w*)\\s*(?=\\()",
+          "name": "entity.name.function.call.luna"
+        }
+      ]
+    },
+    "operators": {
+      "patterns": [
+        {
+          "name": "keyword.operator.luna",
+          "match": "\\+|-|\\*|/|%|==|!=|<|>|<=|>=|=|!|&|\\||\\^|~|<<|>>|\\?|:|=>"
+        }
+      ]
+    }
+  },
+  "scopeName": "source.luna"
+}

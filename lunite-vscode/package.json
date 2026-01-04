@@ -1,0 +1,35 @@
+{
+  "name": "lunite",
+  "displayName": "The Lunite Programming Language",
+  "description": "Syntax highlighting and formatting for Lunite",
+  "version": "1.1.0",
+  "publisher": "ANW",
+  "engines": {
+    "vscode": "^1.60.0"
+  },
+  "main": "./extension.js",
+  "activationEvents": [
+    "onLanguage:lunite"
+  ],
+  "categories": [
+    "Programming Languages",
+    "Formatters"
+  ],
+  "contributes": {
+    "languages": [
+      {
+        "id": "lunite",
+        "aliases": ["Lunite", "luna"],
+        "extensions": [".luna"],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "lunite",
+        "scopeName": "source.luna",
+        "path": "./syntaxes/lunite.tmLanguage.json"
+      }
+    ]
+  }
+}
