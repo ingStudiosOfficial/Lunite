@@ -11,6 +11,13 @@
 
 # VS Code Extension Installation
 
+**Marketplace:**
+1. Search for `The Lunite Programming Language` by (ing) Studios.
+2. Install the extension.
+
+**Marketplace Link:**  
+https://marketplace.visualstudio.com/items?itemName=ingStudiosOfficial.lunite
+
 **Windows:**
 1.  Navigate to `C:\Users\<YourUser>\.vscode\extensions`.
 2.  Copy the `lunite-vscode` folder into this directory.
