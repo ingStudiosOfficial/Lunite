@@ -1,3 +1,5 @@
+<img src="https://raw.githubusercontent.com/SubhrajitSain/Lunite/refs/heads/main/icon.png" alt="Lunite logo" width="100" height="100">  
+
 # The Lunite Programming Language
 © Lunite by ANW (Subhrajit Sain), 2025-2026
 
