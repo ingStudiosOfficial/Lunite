@@ -2,8 +2,8 @@
   "name": "lunite",
   "displayName": "The Lunite Programming Language",
   "description": "Syntax highlighting and formatting for Lunite",
-  "version": "1.1.0",
-  "publisher": "ANW",
+  "version": "1.1.1",
+  "publisher": "ingStudiosOfficial",
   "engines": {
     "vscode": "^1.60.0"
   },
@@ -21,7 +21,11 @@
         "id": "lunite",
         "aliases": ["Lunite", "luna"],
         "extensions": [".luna"],
-        "configuration": "./language-configuration.json"
+        "configuration": "./language-configuration.json",
+        "icon": {
+          "light": "icon.png",
+          "dark": "icon.png"
+        }
       }
     ],
     "grammars": [
@@ -31,5 +35,8 @@
         "path": "./syntaxes/lunite.tmLanguage.json"
       }
     ]
-  }
+  },
+  "repository": "github:SubhrajitSain/Lunite",
+  "license": "MIT",
+  "icon": "icon.png"
 }
