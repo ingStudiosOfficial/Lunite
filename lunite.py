@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # /== == == == == == == == == == ==\
-# |==  LUNITE - v1.8.1 - by ANW  ==|
+# |==  LUNITE - v1.8.2 - by ANW  ==|
 # \== == == == == == == == == == ==/
 
 import sys
@@ -23,9 +23,9 @@ from typing import Any, List, Dict, Optional, Tuple, Set
 # VERSION & CONFIG
 # ==========================================
 
-LUNITE_VERSION_STR = "v1.8.1"
+LUNITE_VERSION_STR = "v1.8.2"
 COPYRIGHT          = "Copyright ANW, 2025-2026"
-LUNITE_USER_AGENT  = "Lunite/1.8.1"
+LUNITE_USER_AGENT  = "Lunite/1.8.2"
 
 # ==========================================
 # TOKENS LIST
@@ -42,6 +42,7 @@ TOKEN_PLUS     = 'PLUS'
 TOKEN_MINUS    = 'MINUS'
 TOKEN_MUL      = 'MUL'
 TOKEN_DIV      = 'DIV'
+TOKEN_MOD      = 'MOD'
 TOKEN_LPAREN   = 'LPAREN'
 TOKEN_RPAREN   = 'RPAREN'
 TOKEN_LBRACE   = 'LBRACE'
@@ -68,6 +69,7 @@ TOKEN_PLUSEQ   = 'PLUSEQ'
 TOKEN_MINUSEQ  = 'MINUSEQ'
 TOKEN_MULEQ    = 'MULEQ'
 TOKEN_DIVEQ    = 'DIVEQ'
+TOKEN_MODEQ    = 'MODEQ'
 TOKEN_AND      = 'AND'
 TOKEN_OR       = 'OR'
 TOKEN_NOT      = 'NOT'
@@ -342,6 +344,13 @@ class Lexer:
                     self.advance()
                     return Token(TOKEN_MULEQ, '*=', self.line)
                 return Token(TOKEN_MUL, '*', self.line)
+            
+            if self.current_char == '%':
+                self.advance()
+                if self.current_char == '=':
+                    self.advance()
+                    return Token(TOKEN_MODEQ, '%=', self.line)
+                return Token(TOKEN_MOD, '%', self.line)
             
             if self.current_char == '(':
                 self.advance()
@@ -863,7 +872,7 @@ class Parser:
 
     def term(self):
         node = self.factor()
-        while self.current_token.type in (TOKEN_MUL, TOKEN_DIV):
+        while self.current_token.type in (TOKEN_MUL, TOKEN_DIV, TOKEN_MOD):
             token = self.current_token
             self.eat(token.type)
             node = BinaryOp(left=node, op=token, right=self.factor())
@@ -1230,7 +1239,7 @@ class Parser:
                 return Assign(expr_node, val)
             
             # Compound Assign
-            elif self.current_token.type in (TOKEN_PLUSEQ, TOKEN_MINUSEQ, TOKEN_MULEQ, TOKEN_DIVEQ):
+            elif self.current_token.type in (TOKEN_PLUSEQ, TOKEN_MINUSEQ, TOKEN_MULEQ, TOKEN_DIVEQ, TOKEN_MODEQ):
                 op = self.current_token
                 self.eat(op.type)
                 val = self.expr()
@@ -1640,6 +1649,7 @@ class Interpreter:
         if op == TOKEN_MINUS: return left - right
         if op == TOKEN_MUL: return left * right
         if op == TOKEN_DIV: return left / right
+        if op == TOKEN_MOD: return left % right
         
         # Bitwise
         if op == TOKEN_BIT_AND: return left & right
@@ -1716,6 +1726,7 @@ class Interpreter:
         if op == TOKEN_MINUSEQ: new_val -= right_val
         if op == TOKEN_MULEQ: new_val *= right_val
         if op == TOKEN_DIVEQ: new_val /= right_val
+        if op == TOKEN_MODEQ: new_val %= right_val
 
         if isinstance(node.left, Identifier):
             self.env.assign(node.left.token.value, new_val)
