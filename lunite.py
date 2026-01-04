@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # /== == == == == == == == == == ==\
-# |==  LUNITE - v1.8.0 - by ANW  ==|
+# |==  LUNITE - v1.8.1 - by ANW  ==|
 # \== == == == == == == == == == ==/
 
 import sys
@@ -23,9 +23,9 @@ from typing import Any, List, Dict, Optional, Tuple, Set
 # VERSION & CONFIG
 # ==========================================
 
-LUNITE_VERSION_STR = "v1.8.0"
-COPYRIGHT          = "Copyright ANW, 2025"
-LUNITE_USER_AGENT  = "Lunite/1.8.0"
+LUNITE_VERSION_STR = "v1.8.1"
+COPYRIGHT          = "Copyright ANW, 2025-2026"
+LUNITE_USER_AGENT  = "Lunite/1.8.1"
 
 # ==========================================
 # TOKENS LIST
@@ -1067,12 +1067,20 @@ class Parser:
             self.eat(TOKEN_LBRACE)
             true_block = self.block()
             self.eat(TOKEN_RBRACE)
+            
             false_block = None
             if self.current_token.type == TOKEN_KEYWORD and self.current_token.value == 'else':
                 self.eat(TOKEN_KEYWORD)
-                self.eat(TOKEN_LBRACE)
-                false_block = self.block()
-                self.eat(TOKEN_RBRACE)
+                
+                if self.current_token.type == TOKEN_KEYWORD and self.current_token.value == 'if':
+                    stmt = self.parse_statement()
+                    false_block = Block([stmt])
+                    false_block.line = stmt.line
+                else:
+                    self.eat(TOKEN_LBRACE)
+                    false_block = self.block()
+                    self.eat(TOKEN_RBRACE)
+            
             return IfStatement(cond, true_block, false_block)
 
         elif token.type == TOKEN_KEYWORD and token.value == 'while':
