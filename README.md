@@ -3,8 +3,8 @@
 # The Lunite Programming Language
 © Lunite by ANW (Subhrajit Sain), 2025-2026
 
-**Version:** v1.8.2  
-**Language update date:** 4th January, 2026  
+**Version:** v1.8.3  
+**Language update date:** 5th January, 2026  
 **Documentation update date:** 5th January, 2026
 
 > "Lunite is an interpreted and compiled (more like 'binded') hybrid language (OOP + POP) built with/on Python." - ANW, creator of Lunite.

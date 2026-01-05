@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # /== == == == == == == == == == ==\
-# |==  LUNITE - v1.8.2 - by ANW  ==|
+# |==  LUNITE - v1.8.3 - by ANW  ==|
 # \== == == == == == == == == == ==/
 
 import sys
@@ -19,13 +19,22 @@ import random
 from dataclasses import dataclass, field
 from typing import Any, List, Dict, Optional, Tuple, Set
 
+try:
+    from colorama import init, Fore, Style
+    init(autoreset=True)
+except ImportError:
+    class ColoramaFallback:
+        def __getattr__(self, name): return ""
+    Fore = Style = ColoramaFallback()
+
 # ==========================================
 # VERSION & CONFIG
 # ==========================================
 
-LUNITE_VERSION_STR = "v1.8.2"
+LUNITE_VERSION_STR = "v1.8.3"
 COPYRIGHT          = "Copyright ANW, 2025-2026"
-LUNITE_USER_AGENT  = "Lunite/1.8.2"
+LUNITE_USER_AGENT  = "Lunite/1.8.3"
+CURRENT_FILE       = "<stdin>"
 
 # ==========================================
 # TOKENS LIST
@@ -124,16 +133,24 @@ class Token:
     type: TokenType
     value: Any
     line: int
+    col: int
 
 class Lexer:
     def __init__(self, source_code):
         self.source = source_code
         self.pos = 0
         self.line = 1
+        self.col = 1
         self.current_char = self.source[0] if self.source else None
 
     def advance(self):
+        if self.current_char == '\n':
+            self.line += 1
+            self.col = 0
+        
         self.pos += 1
+        self.col += 1
+        
         if self.pos < len(self.source):
             self.current_char = self.source[self.pos]
         else:
@@ -154,40 +171,42 @@ class Lexer:
     def skip_comment(self):
         while self.current_char is not None and self.current_char != '\n':
             self.advance()
-        self.advance() # Skip newline
+        self.advance()
         self.line += 1
 
     def skip_multiline_comment(self):
         while self.current_char is not None:
             if self.current_char == '*' and self.peek() == '~':
-                self.advance() # consume *
-                self.advance() # consume ~
+                self.advance()
+                self.advance()
                 break
             if self.current_char == '\n':
                 self.line += 1
             self.advance()
 
     def make_identifier(self):
+        start_col = self.col
         id_str = ''
         while self.current_char is not None and (self.current_char.isalnum() or self.current_char == '_'):
             id_str += self.current_char
             self.advance()
         
         if id_str == 'and':
-            return Token(TOKEN_AND, 'and', self.line)
+            return Token(TOKEN_AND, 'and', self.line, start_col)
         if id_str == 'or':
-            return Token(TOKEN_OR, 'or', self.line)
+            return Token(TOKEN_OR, 'or', self.line, start_col)
         if id_str == 'not':
-            return Token(TOKEN_NOT, 'not', self.line)
+            return Token(TOKEN_NOT, 'not', self.line, start_col)
         if id_str == 'is':
-            return Token(TOKEN_IS, 'is', self.line)
+            return Token(TOKEN_IS, 'is', self.line, start_col)
 
         if id_str in KEYWORDS:
-            return Token(TOKEN_KEYWORD, id_str, self.line)
+            return Token(TOKEN_KEYWORD, id_str, self.line, start_col)
             
-        return Token(TOKEN_ID, id_str, self.line)
+        return Token(TOKEN_ID, id_str, self.line, start_col)
 
     def make_number(self):
+        start_col = self.col
         num_str = ''
         dot_count = 0
         
@@ -203,11 +222,12 @@ class Lexer:
             self.advance()
         
         if dot_count == 0:
-            return Token(TOKEN_INT, int(num_str), self.line)
+            return Token(TOKEN_INT, int(num_str), self.line, start_col)
         else:
-            return Token(TOKEN_FLOAT, float(num_str), self.line)
+            return Token(TOKEN_FLOAT, float(num_str), self.line, start_col)
 
     def make_string(self):
+        start_col = self.col
         quote = self.current_char
         self.advance()
         s = ''
@@ -228,85 +248,85 @@ class Lexer:
                 s += self.current_char
             self.advance()
             
-        self.advance() # Close quote
+        self.advance()
         
         if quote == "'":
             if len(s) != 1:
-                raise Exception(f"Syntax Error: Char literal '{s}' must be exactly of length 1.")
-            return Token(TOKEN_CHAR, s, self.line)
+                msg = f"{Fore.RED}Syntax Error:{Style.RESET_ALL} Char literal must be length 1"
+                loc = f"\n{Fore.CYAN}   File:{Style.RESET_ALL} {CURRENT_FILE}:{self.line}:{start_col}"
+                raise Exception(msg + loc)
+            return Token(TOKEN_CHAR, s, self.line, start_col)
             
-        return Token(TOKEN_STRING, s, self.line)
+        return Token(TOKEN_STRING, s, self.line, start_col)
     
     def get_next_token(self):
         while self.current_char is not None:
+            start_col = self.col 
+            
             if self.current_char.isspace():
                 self.skip_whitespace()
                 continue
             
             if self.current_char == '~':
                 peek_char = self.peek()
-                
                 if peek_char == '~':
-                    self.advance()
-                    self.advance()
+                    self.advance(); self.advance()
                     self.skip_comment()
                     continue
-                
                 elif peek_char == '*':
-                    self.advance()
-                    self.advance()
+                    self.advance(); self.advance()
                     self.skip_multiline_comment()
                     continue
-                
                 else:
                     self.advance()
-                    return Token(TOKEN_BIT_NOT, '~', self.line)
+                    return Token(TOKEN_BIT_NOT, '~', self.line, start_col)
 
             if self.current_char == '/':
                 peek = self.peek()
                 if peek == '=':
                     self.advance(); self.advance()
-                    return Token(TOKEN_DIVEQ, '/=', self.line)
+                    return Token(TOKEN_DIVEQ, '/=', self.line, start_col)
                 else:
                     self.advance()
-                    return Token(TOKEN_DIV, '/', self.line)
+                    return Token(TOKEN_DIV, '/', self.line, start_col)
 
             if self.current_char == '&':
                 self.advance()
                 if self.current_char == '&':
                     self.advance()
-                    return Token(TOKEN_AND, '&&', self.line)
-                return Token(TOKEN_BIT_AND, '&', self.line)
+                    return Token(TOKEN_AND, '&&', self.line, start_col)
+                return Token(TOKEN_BIT_AND, '&', self.line, start_col)
 
             if self.current_char == '|':
                 self.advance()
                 if self.current_char == '|':
                     self.advance()
-                    return Token(TOKEN_OR, '||', self.line)
-                return Token(TOKEN_BIT_OR, '|', self.line)
+                    return Token(TOKEN_OR, '||', self.line, start_col)
+                return Token(TOKEN_BIT_OR, '|', self.line, start_col)
 
             if self.current_char == '^':
                 self.advance()
-                return Token(TOKEN_BIT_XOR, '^', self.line)
+                return Token(TOKEN_BIT_XOR, '^', self.line, start_col)
 
             if self.current_char == '<':
                 self.advance()
                 if self.current_char == '<':
                     self.advance()
-                    return Token(TOKEN_LSHIFT, '<<', self.line)
-                return Token(TOKEN_LT, '<', self.line)
+                    return Token(TOKEN_LSHIFT, '<<', self.line, start_col)
+                return Token(TOKEN_LT, '<', self.line, start_col)
 
             if self.current_char == '>':
                 self.advance()
                 if self.current_char == '>':
                     self.advance()
-                    return Token(TOKEN_RSHIFT, '>>', self.line)
-                return Token(TOKEN_GT, '>', self.line)
+                    return Token(TOKEN_RSHIFT, '>>', self.line, start_col)
+                return Token(TOKEN_GT, '>', self.line, start_col)
 
             if self.current_char == 'f' and self.peek() == '"':
                 self.advance()
                 token = self.make_string()
                 token.type = TOKEN_FSTRING
+                token.col = start_col
                 return token
 
             if self.current_char.isalpha() or self.current_char == '_':
@@ -319,7 +339,7 @@ class Lexer:
                 if self.peek() is not None and self.peek().isdigit():
                      return self.make_number()
                 self.advance()
-                return Token(TOKEN_DOT, '.', self.line)
+                return Token(TOKEN_DOT, '.', self.line, start_col)
             
             if self.current_char == '"' or self.current_char == "'":
                 return self.make_string()
@@ -328,97 +348,92 @@ class Lexer:
                 self.advance()
                 if self.current_char == '=':
                     self.advance()
-                    return Token(TOKEN_PLUSEQ, '+=', self.line)
-                return Token(TOKEN_PLUS, '+', self.line)
+                    return Token(TOKEN_PLUSEQ, '+=', self.line, start_col)
+                return Token(TOKEN_PLUS, '+', self.line, start_col)
 
             if self.current_char == '-':
                 self.advance()
                 if self.current_char == '=':
                     self.advance()
-                    return Token(TOKEN_MINUSEQ, '-=', self.line)
-                return Token(TOKEN_MINUS, '-', self.line)
+                    return Token(TOKEN_MINUSEQ, '-=', self.line, start_col)
+                return Token(TOKEN_MINUS, '-', self.line, start_col)
 
             if self.current_char == '*':
                 self.advance()
                 if self.current_char == '=':
                     self.advance()
-                    return Token(TOKEN_MULEQ, '*=', self.line)
-                return Token(TOKEN_MUL, '*', self.line)
+                    return Token(TOKEN_MULEQ, '*=', self.line, start_col)
+                return Token(TOKEN_MUL, '*', self.line, start_col)
             
             if self.current_char == '%':
                 self.advance()
                 if self.current_char == '=':
                     self.advance()
-                    return Token(TOKEN_MODEQ, '%=', self.line)
-                return Token(TOKEN_MOD, '%', self.line)
+                    return Token(TOKEN_MODEQ, '%=', self.line, start_col)
+                return Token(TOKEN_MOD, '%', self.line, start_col)
             
             if self.current_char == '(':
                 self.advance()
-                return Token(TOKEN_LPAREN, '(', self.line)
+                return Token(TOKEN_LPAREN, '(', self.line, start_col)
             
             if self.current_char == ')':
                 self.advance()
-                return Token(TOKEN_RPAREN, ')', self.line)
+                return Token(TOKEN_RPAREN, ')', self.line, start_col)
             
             if self.current_char == '{':
                 self.advance()
-                return Token(TOKEN_LBRACE, '{', self.line)
+                return Token(TOKEN_LBRACE, '{', self.line, start_col)
             
             if self.current_char == '}':
                 self.advance()
-                return Token(TOKEN_RBRACE, '}', self.line)
+                return Token(TOKEN_RBRACE, '}', self.line, start_col)
             
             if self.current_char == '[':
                 self.advance()
-                return Token(TOKEN_LBRACKET, '[', self.line)
+                return Token(TOKEN_LBRACKET, '[', self.line, start_col)
             
             if self.current_char == ']':
                 self.advance()
-                return Token(TOKEN_RBRACKET, ']', self.line)
+                return Token(TOKEN_RBRACKET, ']', self.line, start_col)
             
             if self.current_char == ':':
                 self.advance()
-                return Token(TOKEN_COLON, ':', self.line)
+                return Token(TOKEN_COLON, ':', self.line, start_col)
             
             if self.current_char == ',':
                 self.advance()
-                return Token(TOKEN_COMMA, ',', self.line)
+                return Token(TOKEN_COMMA, ',', self.line, start_col)
             
             if self.current_char == '.':
                 self.advance()
-                return Token(TOKEN_DOT, '.', self.line)
+                return Token(TOKEN_DOT, '.', self.line, start_col)
             
             if self.current_char == '?':
                 self.advance()
-                return Token(TOKEN_QUESTION, '?', self.line)
+                return Token(TOKEN_QUESTION, '?', self.line, start_col)
             
             if self.current_char == '=':
                 self.advance()
                 if self.current_char == '>':
                     self.advance()
-                    return Token(TOKEN_ARROW, '=>', self.line)
+                    return Token(TOKEN_ARROW, '=>', self.line, start_col)
                 if self.current_char == '=': 
                     self.advance()
-                    return Token(TOKEN_EQ, '==', self.line)
-                return Token(TOKEN_ASSIGN, '=', self.line)
+                    return Token(TOKEN_EQ, '==', self.line, start_col)
+                return Token(TOKEN_ASSIGN, '=', self.line, start_col)
             
-            if self.current_char == '=':
-                self.advance()
-                if self.current_char == '=':
-                    self.advance()
-                    return Token(TOKEN_EQ, '==', self.line)
-                return Token(TOKEN_ASSIGN, '=', self.line)
-
             if self.current_char == '!':
                 self.advance()
                 if self.current_char == '=':
                     self.advance()
-                    return Token(TOKEN_NEQ, '!=', self.line)
-                return Token(TOKEN_NOT, '!', self.line)
+                    return Token(TOKEN_NEQ, '!=', self.line, start_col)
+                return Token(TOKEN_NOT, '!', self.line, start_col)
             
-            raise Exception(f"Syntax Error: Illegal character '{self.current_char}' found at line {self.line}")
+            msg = f"{Fore.RED}Syntax Error:{Style.RESET_ALL} Illegal character '{self.current_char}'"
+            loc = f"\n{Fore.CYAN}   File:{Style.RESET_ALL} {CURRENT_FILE}:{self.line}:{start_col}"
+            raise Exception(msg + loc)
 
-        return Token(TOKEN_EOF, None, self.line)
+        return Token(TOKEN_EOF, None, self.line, self.col)
         
 # ==========================================
 # AST
@@ -427,6 +442,7 @@ class Lexer:
 @dataclass
 class AST:
     line: int = field(default=0, init=False)
+    col: int = field(default=0, init=False)
 
 @dataclass
 class Number(AST):
@@ -659,8 +675,10 @@ class Parser:
             if self.pos < len(self.tokens):
                 self.current_token = self.tokens[self.pos]
         else:
-            raise Exception(f"Syntax Error: Unexpected token of type {self.current_token.type}, expected type {token_type} at line {self.current_token.line}")
-
+            msg = f"{Fore.RED}Syntax Error:{Style.RESET_ALL} Unexpected token {self.current_token.type}, expected {token_type}"
+            loc = f"\n{Fore.CYAN}   File:{Style.RESET_ALL} {CURRENT_FILE}:{self.current_token.line}:{self.current_token.col}"
+            raise Exception(msg + loc)
+    
     def parse_args(self):
         args = []
         if self.current_token.type != TOKEN_RPAREN:
@@ -824,7 +842,9 @@ class Parser:
                     if isinstance(e, Identifier):
                         params.append(e.token.value)
                     else:
-                        raise Exception("Syntax Error: Lambda parameters must be identifiers")
+                        msg = f"{Fore.RED}Syntax Error:{Style.RESET_ALL} Lambda parameters must be identifiers"
+                        loc = f"\n{Fore.CYAN}   File:{Style.RESET_ALL} {CURRENT_FILE}:{self.current_token.line}:{self.current_token.col}"
+                        raise Exception(msg + loc)
                 
                 if self.current_token.type == TOKEN_LBRACE:
                     self.eat(TOKEN_LBRACE)
@@ -837,7 +857,9 @@ class Parser:
             if len(exprs) == 1: return exprs[0]
             return TupleLiteral(exprs)
         
-        raise Exception(f"Syntax Error: Invalid atom {token.value} found at line {token.line}")
+        msg = f"{Fore.RED}Syntax Error:{Style.RESET_ALL} Invalid atom {token.value}"
+        loc = f"\n{Fore.CYAN}   File:{Style.RESET_ALL} {CURRENT_FILE}:{token.line}:{token.col}"
+        raise Exception(msg + loc)
 
     def factor(self):
         token = self.current_token
@@ -943,13 +965,14 @@ class Parser:
         return node
 
     def parse_statement(self):
-        # Capture line number of the start of the statement
         start_line = self.current_token.line
+        start_col = self.current_token.col
+        
         node = self._parse_statement_body()
         
-        # Attach line number to the AST node
         if isinstance(node, AST):
             node.line = start_line
+            node.col = start_col
         return node
 
     def _parse_statement_body(self):
@@ -966,7 +989,9 @@ class Parser:
                 self.eat(TOKEN_STRING)
                 return ImportStatement(name)
             else:
-                raise Exception("Syntax Error: Expected module name after 'import'")
+                msg = f"{Fore.RED}Syntax Error:{Style.RESET_ALL} Expected module name after 'import'"
+                loc = f"\n{Fore.CYAN}   File:{Style.RESET_ALL} {CURRENT_FILE}:{self.current_token.line}:{self.current_token.col}"
+                raise Exception(msg + loc)
             
         elif token.type == TOKEN_KEYWORD and token.value == 'import_py':
             self.eat(TOKEN_KEYWORD)
@@ -978,7 +1003,9 @@ class Parser:
                 name = self.current_token.value
                 self.eat(TOKEN_STRING)
             else:
-                raise Exception("Syntax Error: Expected Python module name after 'import_py'")
+                msg = f"{Fore.RED}Syntax Error:{Style.RESET_ALL} Expected Python module name after 'import_py'"
+                loc = f"\n{Fore.CYAN}   File:{Style.RESET_ALL} {CURRENT_FILE}:{self.current_token.line}:{self.current_token.col}"
+                raise Exception(msg + loc)
             
             return ImportPyStatement(name, alias=name)
 
@@ -1109,7 +1136,9 @@ class Parser:
             if self.current_token.type == TOKEN_KEYWORD and self.current_token.value == 'in':
                 self.eat(TOKEN_KEYWORD)
             else:
-                raise Exception("Syntax Error: Expected 'in' after for loop's variable")
+                msg = f"{Fore.RED}Syntax Error:{Style.RESET_ALL} Expected 'in' after for loop's variable"
+                loc = f"\n{Fore.CYAN}   File:{Style.RESET_ALL} {CURRENT_FILE}:{self.current_token.line}:{self.current_token.col}"
+                raise Exception(msg + loc)
             iterable = self.expr()
             self.eat(TOKEN_LBRACE)
             body = self.block()
@@ -1132,7 +1161,9 @@ class Parser:
                 self.eat(TOKEN_RBRACE)
                 return TryCatchStatement(try_block, error_var, catch_block)
             else:
-                raise Exception("Syntax Error: No 'rescue' block found after 'attempt'")
+                msg = f"{Fore.RED}Syntax Error:{Style.RESET_ALL} No 'rescue' block found after 'attempt'"
+                loc = f"\n{Fore.CYAN}   File:{Style.RESET_ALL} {CURRENT_FILE}:{self.current_token.line}:{self.current_token.col}"
+                raise Exception(msg + loc)
             
         elif token.type == TOKEN_KEYWORD and token.value == 'enum':
             self.eat(TOKEN_KEYWORD)
@@ -1171,7 +1202,9 @@ class Parser:
                 self.eat(TOKEN_INT)
                 return LeapStatement(target)
             else:
-                raise Exception("Syntax Error: Leap target must be a label name or line number")
+                msg = f"{Fore.RED}Syntax Error:{Style.RESET_ALL} Leap target must be a label name or line number"
+                loc = f"\n{Fore.CYAN}   File:{Style.RESET_ALL} {CURRENT_FILE}:{self.current_token.line}:{self.current_token.col}"
+                raise Exception(msg + loc)
     
         elif token.type == TOKEN_LBRACE:
             if (self.pos + 1 < len(self.tokens) and 
@@ -1536,7 +1569,19 @@ class Interpreter:
     def visit(self, node):
         method_name = f'visit_{type(node).__name__}'
         method = getattr(self, method_name, self.no_visit)
-        return method(node)
+        
+        try:
+            return method(node)
+        except Exception as e:
+            if hasattr(e, 'has_location') and e.has_location: raise e
+            if isinstance(e, (ReturnException, BreakException, AdvanceException, LeapException)): raise e
+            
+            err_msg = f"{Fore.RED}Runtime Error:{Style.RESET_ALL} {str(e)}"
+            loc_msg = f"\n{Fore.CYAN}   File:{Style.RESET_ALL} {CURRENT_FILE}:{node.line}:{node.col}"
+            
+            new_e = Exception(err_msg + loc_msg)
+            new_e.has_location = True
+            raise new_e
 
     def no_visit(self, node):
         raise Exception(f"Internal Lunite Error: No visit_{type(node).__name__} method defined")
@@ -1649,7 +1694,11 @@ class Interpreter:
         if op == TOKEN_MINUS: return left - right
         if op == TOKEN_MUL: return left * right
         if op == TOKEN_DIV: return left / right
-        if op == TOKEN_MOD: return left % right
+        if op == TOKEN_MOD: 
+            val = math.fmod(left, right)
+            if isinstance(left, int) and isinstance(right, int):
+                return int(val)
+            return val
         
         # Bitwise
         if op == TOKEN_BIT_AND: return left & right
@@ -1726,7 +1775,12 @@ class Interpreter:
         if op == TOKEN_MINUSEQ: new_val -= right_val
         if op == TOKEN_MULEQ: new_val *= right_val
         if op == TOKEN_DIVEQ: new_val /= right_val
-        if op == TOKEN_MODEQ: new_val %= right_val
+        if op == TOKEN_MODEQ: 
+            val = math.fmod(curr_val, right_val)
+            if isinstance(curr_val, int) and isinstance(right_val, int):
+                new_val = int(val)
+            else:
+                new_val = val
 
         if isinstance(node.left, Identifier):
             self.env.assign(node.left.token.value, new_val)
@@ -1736,21 +1790,6 @@ class Interpreter:
             target[self.visit(node.left.index)] = new_val
             
         return new_val
-
-    def visit_BinaryOp(self, node):
-        left = self.visit(node.left)
-        right = self.visit(node.right)
-        op = node.op.type
-
-        if op == TOKEN_PLUS: return left + right
-        if op == TOKEN_MINUS: return left - right
-        if op == TOKEN_MUL: return left * right
-        if op == TOKEN_DIV: return left / right
-        if op == TOKEN_GT: return left > right
-        if op == TOKEN_LT: return left < right
-        if op == TOKEN_EQ: return left == right
-        if op == TOKEN_NEQ: return left != right
-        return None
 
     def visit_IfStatement(self, node):
         if self.visit(node.condition):
@@ -1879,7 +1918,7 @@ class Interpreter:
                 f_params = [(p, None) for p in f_params]
 
             if len(node.args) > len(f_params):
-                raise Exception(f"Function Error: Too many arguments.")
+                raise Exception(f"Function Error: Too many arguments (expected {len(f_params)}, got {len(node.args)})")
 
             for i, (p_name, p_default) in enumerate(f_params):
                 if i < len(node.args):
@@ -2081,66 +2120,58 @@ class Interpreter:
 # CLI & BUILDER
 # ==========================================
 
-def start_repl():
-    print(f"Lunite {LUNITE_VERSION_STR} REPL CLI")
-    print(f"{COPYRIGHT}")
-    print("Run Lunite code line-by-line.")
-    print("Type 'exit' or 'quit' to quit.")
-    print("-" * 30)
+def print_error(msg):
+    print(f"{Fore.RED}{msg}{Style.RESET_ALL}")
 
-    interpreter = Interpreter()
+def run_code(source):
+    try:
+        lexer = Lexer(source)
+        tokens = []
+        while True:
+            tok = lexer.get_next_token()
+            tokens.append(tok)
+            if tok.type == TOKEN_EOF: break
+        
+        parser = Parser(tokens)
+        ast = parser.parse()
+        interpreter = Interpreter()
+        interpreter.visit(ast)
+
+    except (LeapException, BreakException, AdvanceException, ReturnException) as e:
+        print(f"{Fore.RED}Runtime Error: Control flow error ({type(e).__name__}){Style.RESET_ALL}")
+    except Exception as e:
+        print(str(e))
+
+# [RUNTIME BINDED CODE END]
+
+def start_repl():
+    global CURRENT_FILE
+    CURRENT_FILE = "<stdin>"
+    print(f"{Fore.CYAN}Lunite {LUNITE_VERSION_STR} REPL CLI{Style.RESET_ALL}")
+    print(f"{Fore.YELLOW}{COPYRIGHT}{Style.RESET_ALL}")
     
+    interpreter = Interpreter()
     while True:
         try:
-            text = input("lunite> ")
-            if text.strip() == "": continue
+            text = input(f"{Fore.GREEN}lunite>{Style.RESET_ALL} ")
             if text.strip() in ["exit", "quit"]: break
+            if not text.strip(): continue
             
             lexer = Lexer(text)
             tokens = []
             while True:
-                tok = lexer.get_next_token()
-                tokens.append(tok)
-                if tok.type == TOKEN_EOF: break
+                t = lexer.get_next_token()
+                tokens.append(t)
+                if t.type == TOKEN_EOF: break
             
-            parser = Parser(tokens)
-            ast = parser.parse() 
-            
+            ast = Parser(tokens).parse()
             if isinstance(ast, Block):
                 for stmt in ast.statements:
                     res = interpreter.visit(stmt)
                     if res is not None:
                         print(interpreter.global_env.values.get('str')(res))
-            
         except Exception as e:
-            print(f"Error: {e}")
-
-def run_code(source):
-    lexer = Lexer(source)
-    tokens = []
-    while True:
-        tok = lexer.get_next_token()
-        tokens.append(tok)
-        if tok.type == TOKEN_EOF:
-            break
-    
-    parser = Parser(tokens)
-    try:
-        ast = parser.parse()
-        interpreter = Interpreter()
-        interpreter.visit(ast)
-    except LeapException as e:
-        print(f"Runtime Error: Jump target '{e.target}' not found (or jump out of scope).")
-    except BreakException:
-        print("Runtime Error: 'break' outside of loop.")
-    except AdvanceException:
-        print("Runtime Error: 'advance' outside of loop.")
-    except ReturnException:
-        print("Runtime Error: 'return' outside of function.")
-    except Exception as e:
-        print(f"Lunite Error: {e}")
-
-# [RUNTIME BINDED CODE END]
+            print(str(e))
 
 def compile_code(filename):
     with open(filename, 'r') as f:
@@ -2197,6 +2228,8 @@ def clean_build():
         print(f"Clean error: {e}")
 
 def main():
+    global CURRENT_FILE
+
     if len(sys.argv) < 2:
         start_repl()
         return
@@ -2212,6 +2245,7 @@ def main():
             print("Run failed: File not provided.")
             return
         path = sys.argv[2]
+        CURRENT_FILE = os.path.abspath(path)
         if os.path.exists(path):
             with open(path, 'r') as f:
                 run_code(f.read())
@@ -2236,6 +2270,7 @@ def main():
                 print("Build failed: File not provided.")
                 return
             print("-------------------------------")
+            CURRENT_FILE = os.path.abspath(sys.argv[2])
             compile_code(sys.argv[2])
         elif cnt_build.lower().startswith('n'):
             print("Build failed: Aborted by user.")
