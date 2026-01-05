@@ -3,15 +3,25 @@
 # The Lunite Programming Language
 © Lunite by ANW (Subhrajit Sain), 2025-2026
 
-**Version:** v1.8.1  
+**Version:** v1.8.2  
 **Language update date:** 4th January, 2026  
-**Documentation update date:** 4th January, 2026
+**Documentation update date:** 5th January, 2026
 
 > "Lunite is an interpreted and compiled (more like 'binded') hybrid language (OOP + POP) built with/on Python." - ANW, creator of Lunite.
 
 ---
 
-# VS Code Extension Installation
+## How to Build Lunite Executable  
+1. Install PyInstaller using `pip3 install pyinstaller`
+2. Copy `lunite.py` and `icon.png` to a separate folder (e.g., `tmp`) for easy building (e.g., `mkdir -pv tmp && cp -v lunite.py tmp && cp -v icon.png tmp`).
+3. Navigate to the directory where you copied the files (e.g., `cd tmp`).
+4. Use PyInstaller to build Lunite: `pyinstaller --onefile lunite.py --icon icon.png`
+5. The generated Lunite executable will be created in the `dist` folder from your source.
+6. You can delete the temporary folder later after saving the executable.
+
+---
+
+## VS Code Extension Installation
 
 **Marketplace:**
 1. Search for `The Lunite Programming Language` by (ing) Studios. Credit goes to (ing) Studios and ANW.
@@ -58,7 +68,7 @@ Lunite acts as both an interpreter and a compiler (via PyInstaller).
     python lunite.py run program.luna
     ```
 
-*   **[WIP] Build and Compile to Executable:**
+*   **Build and Compile to Executable:**
     Creates a standalone executable in the `./dist/` folder with PyInstaller.
     ```bash
     python lunite.py build program.luna
@@ -188,8 +198,8 @@ Lunite supports standard types and specific low-level wrappers.
 
 ## 3. Operators
 
-*   **Arithmetic:** `+`, `-`, `*`, `/`
-*   **Compound:** `+=`, `-=`, `*=`, `/=`
+*   **Arithmetic:** `+`, `-`, `*`, `/`, `%`
+*   **Compound:** `+=`, `-=`, `*=`, `/=`, `%=`
 *   **Comparison:** `==`, `!=`, `>`, `<`, `>=`, `<=`
 *   **Logical:** 
     *   AND: `&&` or `and`
