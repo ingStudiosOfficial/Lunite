@@ -12,12 +12,7 @@
 ---
 
 ## How to Build Lunite Executable  
-1. Install PyInstaller using `pip3 install pyinstaller`
-2. Copy `lunite.py` and `icon.png` to a separate folder (e.g., `tmp`) for easy building (e.g., `mkdir -pv tmp && cp -v lunite.py tmp && cp -v icon.png tmp`).
-3. Navigate to the directory where you copied the files (e.g., `cd tmp`).
-4. Use PyInstaller to build Lunite: `pyinstaller --onefile lunite.py --icon icon.png`
-5. The generated Lunite executable will be created in the `dist` folder from your source.
-6. You can delete the temporary folder later after saving the executable.
+To build Lunite, run either `build.sh` (Linux or MacOS) or `build.bat` (Windows). Make sure you have Python installed along with `pip3`.
 
 ---
 
