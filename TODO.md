@@ -1,7 +1,5 @@
 # Lunite TODO:
 
-- Change `import_py`'s syntax from only `import_py "<module_name>"` to both `import_py "<module_name>"` and `import_py "<module_name_or_member_or_method>" from "<package_name>"`, e.g., `import_py "load_dotenv" from "dotenv"`. The same for `import` where the directory structure is like: `./<package_name>/<module_name>.luna`.
-- Make sure `import_py` works for `.py` files in a directory too, like: `import_py "app"` for `app.py` or `import_py "./pylib/csv"` for `./pylib/csv.py`. The same for `import`.
 - Make a separate README for the VS Code extention, if possible
 - Try to add multithreaded interpretation to make Lunite faster, with a command like `python lunite.py run <file.luna> <num_threads if specified else synchronous>`
 - Add native `async` and threading to the language
