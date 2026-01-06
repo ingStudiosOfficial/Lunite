@@ -248,13 +248,32 @@ class Lexer:
         self.advance()
         s = ''
         escape_map = {
-            'n': '\n', 't': '\t', 'r': '\r', '\\': '\\', '"': '"', "'": "'"
+            'n': '\n', 't': '\t', 'r': '\r', '\\': '\\', '"': '"', "'": "'",
+            'b': '\b', 'h': '\t', '0': '\0'
         }
         
         while self.current_char is not None and self.current_char != quote:
             if self.current_char == '\\':
                 self.advance()
-                if self.current_char in escape_map:
+                
+                # Unicode Hex \uXXXX
+                if self.current_char == 'u':
+                    self.advance()
+                    hex_str = ''
+                    for _ in range(4):
+                        if self.current_char is None:
+                             raise lunite_error("Syntax", "Unterminated Unicode escape sequence", self.line, self.col)
+                        if self.current_char not in "0123456789abcdefABCDEF":
+                             raise lunite_error("Syntax", f"Invalid Unicode hex character '{self.current_char}'", self.line, self.col)
+                        hex_str += self.current_char
+                        self.advance()
+                    try:
+                        s += chr(int(hex_str, 16))
+                    except ValueError:
+                         raise lunite_error("Syntax", f"Invalid Unicode sequence '\\u{hex_str}'", self.line, self.col)
+                    continue 
+
+                elif self.current_char in escape_map:
                     s += escape_map[self.current_char]
                 else:
                     s += '\\' 
@@ -262,6 +281,7 @@ class Lexer:
                         s += self.current_char
             else:
                 s += self.current_char
+            
             self.advance()
             
         self.advance()
@@ -271,8 +291,8 @@ class Lexer:
                 raise lunite_error(
                     "Syntax",
                     "Char literal must be length 1",
-                    quote.line,
-                    quote.col
+                    self.line,
+                    start_col
                 )
             return Token(TOKEN_CHAR, s, self.line, start_col)
             
