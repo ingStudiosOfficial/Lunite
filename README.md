@@ -463,7 +463,7 @@ Lunite provides modern, colored, and location-aware error messages. Every error 
 *   Source file name
 *   Exact line and column number
 
-Example output screenshot:
+Example output screenshot:  
 ![alt text](error-screenshot.png)
 
 This makes debugging significantly easier, especially for larger projects.
