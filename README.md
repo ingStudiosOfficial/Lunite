@@ -3,7 +3,7 @@
 # The Lunite Programming Language
 © Lunite by ANW (Subhrajit Sain), 2025-2026
 
-**Version:** v1.8.4  
+**Version:** v1.8.5  
 **Language update date:** 6th January, 2026  
 **Documentation update date:** 6th January, 2026
 
@@ -374,26 +374,39 @@ Accessed via the global Regex object.
 ## 8. Modules
 
 ### Import Lunite Modules
-You can split code into multiple files or modules. For example,
+You can split code into multiple files or modules. Note that importing a Lunite file executes it in the current scope (similar to C includes), so defined functions become available directly:
 
-`utils.luna` can be:
+`utils.luna`:
 ```javascript
 func help() {
     out("Helping...")
 }
 ```
 
-`main.luna` can be:
+`mylib/hello.luna`:
 ```javascript
-import "utils"
-utils.help()
+func hello() {
+    out("Hello, Lunite!")
+}
+```
+
+`main.luna`:
+```javascript
+import "utils"              ~~ or import utils
+import "./mylib/hello.luna" ~~ or import hello from mylib or import "hello" from "mylib"
+
+help()  ~~ Accessed directly, not via 'utils.help()'
+hello()
 ```
 
 ### Import Python Modules
 You can also import Python modules using `import_py`. Example:
 ```javascript
-import_py "math"
+import_py "math"         ~~ or import_py math
+import_py sqrt from math
+
 out("Value of Pi: " + str(math.pi))
+out("Square root of 16: " + str(sqrt(16)))
 ```
 
 ---

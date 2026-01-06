@@ -110,7 +110,7 @@ KEYWORDS = [
     'return', 'new', 'true', 'false', 'null', 'import',
     'attempt', 'rescue', 'extends', 'break', 'advance', 'leap',
     'match', 'other', 'and', 'or', 'not', 'const', 'import_py',
-    'enum', 'is'
+    'enum', 'is', 'from'
 ]
 
 # ==========================================
@@ -569,6 +569,7 @@ class TryCatchStatement(AST):
 @dataclass
 class ImportStatement(AST):
     module_name: str
+    source_package: Optional[str] = None
 
 @dataclass
 class FunctionCall(AST):
@@ -637,6 +638,7 @@ class NewInstance(AST):
 class ImportPyStatement(AST):
     module_name: str
     alias: str
+    source_package: Optional[str] = None
 
 @dataclass
 class SetLiteral(AST):
@@ -1090,20 +1092,14 @@ class Parser:
         
         if token.type == TOKEN_KEYWORD and token.value == 'import':
             self.eat(TOKEN_KEYWORD)
+            module_name = ""
+            
             if self.current_token.type == TOKEN_ID:
-                name = self.current_token.value
+                module_name = self.current_token.value
                 self.eat(TOKEN_ID)
-                node = ImportStatement(name)
-                node.line = token.line
-                node.col = token.col
-                return node
             elif self.current_token.type == TOKEN_STRING:
-                name = self.current_token.value
+                module_name = self.current_token.value
                 self.eat(TOKEN_STRING)
-                node = ImportStatement(name)
-                node.line = token.line
-                node.col = token.col
-                return node
             else:
                 raise lunite_error(
                     "Syntax",
@@ -1111,6 +1107,28 @@ class Parser:
                     token.line,
                     token.col
                 )
+            
+            source_package = None
+            if self.current_token.type == TOKEN_KEYWORD and self.current_token.value == 'from':
+                self.eat(TOKEN_KEYWORD)
+                if self.current_token.type == TOKEN_STRING:
+                    source_package = self.current_token.value
+                    self.eat(TOKEN_STRING)
+                elif self.current_token.type == TOKEN_ID:
+                    source_package = self.current_token.value
+                    self.eat(TOKEN_ID)
+                else:
+                    raise lunite_error(
+                        "Syntax",
+                        "Expected package name after 'from'",
+                        self.current_token.line,
+                        self.current_token.col
+                    )
+
+            node = ImportStatement(module_name, source_package)
+            node.line = token.line
+            node.col = token.col
+            return node
             
         elif token.type == TOKEN_KEYWORD and token.value == 'import_py':
             self.eat(TOKEN_KEYWORD)
@@ -1129,7 +1147,24 @@ class Parser:
                     token.col
                 )
             
-            node = ImportPyStatement(name, alias=name)
+            source_package = None
+            if self.current_token.type == TOKEN_KEYWORD and self.current_token.value == 'from':
+                self.eat(TOKEN_KEYWORD)
+                if self.current_token.type == TOKEN_STRING:
+                    source_package = self.current_token.value
+                    self.eat(TOKEN_STRING)
+                elif self.current_token.type == TOKEN_ID:
+                    source_package = self.current_token.value
+                    self.eat(TOKEN_ID)
+                else:
+                    raise lunite_error(
+                        "Import",
+                        "Expected Python package name after 'from'",
+                        self.current_token.line,
+                        self.current_token.col
+                    )
+            
+            node = ImportPyStatement(name, alias=name, source_package=source_package)
             node.line = token.line
             node.col = token.col
             return node
@@ -2128,25 +2163,37 @@ class Interpreter:
                 self.env = prev_env
 
     def visit_ImportStatement(self, node):
-        fname = node.module_name
-        if not fname.endswith('.luna'):
-            fname += '.luna'
+        target_file = ""
         
-        if fname in self.imported_files:
+        if node.source_package:
+            base_dir = node.source_package
+            mod_name = node.module_name
+            if not mod_name.endswith('.luna'): mod_name += '.luna'
+            target_file = os.path.join(base_dir, mod_name)
+            
+        elif os.path.sep in node.module_name or '/' in node.module_name:
+             target_file = node.module_name
+             if not target_file.endswith('.luna'): target_file += '.luna'
+             
+        else:
+            target_file = node.module_name
+            if not target_file.endswith('.luna'): target_file += '.luna'
+        
+        target_file = os.path.normpath(target_file)
+        
+        if target_file in self.imported_files:
             return 
         
-        if not os.path.exists(fname):
-            raise lunite_error(
-                "Import",
-                f"Module '{fname}' not found or does not exist",
-                node.line,
-                node.col
-            )
+        if not os.path.exists(target_file):
+             raise lunite_error("Import", f"Module '{target_file}' not found", node.line, node.col)
         
-        with open(fname, 'r') as f:
-            code = f.read()
+        try:
+            with open(target_file, 'r') as f:
+                code = f.read()
+        except Exception as e:
+            raise lunite_error("Import", f"Failed to read '{target_file}': {str(e)}", node.line, node.col)
         
-        self.imported_files.add(fname)
+        self.imported_files.add(target_file)
         
         lexer = Lexer(code)
         tokens = []
@@ -2410,15 +2457,52 @@ class Interpreter:
         
     def visit_ImportPyStatement(self, node):
         try:
-            mod = importlib.import_module(node.module_name)
-            self.env.define(node.alias, mod)
-        except ImportError:
-            raise lunite_error(
-                    "Import",
-                    f"Python module '{node.module_name}' not found",
-                    node.line,
-                    node.col
-                )
+            if node.source_package:
+                if os.path.sep in node.source_package or '/' in node.source_package or node.source_package.startswith('.'):
+                    pkg_path = os.path.abspath(node.source_package)
+                    pkg_dir = os.path.dirname(pkg_path)
+                    pkg_name = os.path.basename(pkg_path)
+                    
+                    if os.path.isdir(pkg_path):
+                        sys.path.insert(0, pkg_path)
+                        mod = importlib.import_module(node.source_package)
+                    else:
+                        sys.path.insert(0, pkg_dir)
+                        if pkg_name.endswith('.py'): pkg_name = pkg_name[:-3]
+                        mod = importlib.import_module(pkg_name)
+                else:
+                    mod = importlib.import_module(node.source_package)
+                
+                val = getattr(mod, node.module_name)
+                self.env.define(node.alias, val)
+                
+            else:
+                target_name = node.module_name
+                
+                if os.path.sep in target_name or '/' in target_name or target_name.startswith('.'):
+                    abs_path = os.path.abspath(target_name)
+                    directory = os.path.dirname(abs_path)
+                    filename = os.path.basename(abs_path)
+                    
+                    if filename.endswith('.py'):
+                        module_name_stripped = filename[:-3]
+                    else:
+                        module_name_stripped = filename
+                        
+                    sys.path.insert(0, directory)
+                    mod = importlib.import_module(module_name_stripped)
+                    self.env.define(module_name_stripped, mod)
+                    
+                else:
+                    mod = importlib.import_module(target_name)
+                    self.env.define(node.alias, mod)
+
+        except ImportError as e:
+            raise lunite_error("Import", f"Python module import failed: {str(e)}", node.line, node.col)
+        except AttributeError as e:
+            raise lunite_error("Import", f"Python module attribute error: {str(e)}", node.line, node.col)
+        except Exception as e:
+            raise lunite_error("Import", f"Python module integration error: {str(e)}", node.line, node.col)
 
     def visit_SetLiteral(self, node):
         elements = [self.visit(e) for e in node.elements]
