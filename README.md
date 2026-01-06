@@ -3,15 +3,30 @@
 # The Lunite Programming Language
 © Lunite by ANW (Subhrajit Sain), 2025-2026
 
-**Version:** v1.8.0  
-**Language update date:** 3rd January, 2026  
-**Documentation update date:** 4th January, 2026
+**Version:** v1.8.6  
+**Language update date:** 6th January, 2026  
+**Documentation update date:** 6th January, 2026
 
-> "Lunite is an interpreted and compiled (more like 'binded') hybrid language (OOP + POP) built with/on Python." - ANW, creator of Lunite.
+Lunite is an interpreted and compiled (more like 'binded') hybrid language (OOP + POP) built with/on Python.
 
 ---
 
-# VS Code Extension Installation
+## Live Star History
+
+<picture>
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=SubhrajitSain/Lunite&type=date&theme=dark&legend=bottom-right" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=SubhrajitSain/Lunite&type=date&legend=bottom-right" />
+   <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=SubhrajitSain/Lunite&type=date&legend=bottom-right" />
+</picture>
+
+---
+
+## How to Build Lunite Executable  
+To build Lunite, run either `build.sh` (Linux or MacOS) or `build.bat` (Windows). Make sure you have Python installed along with `pip3`.
+
+---
+
+## VS Code Extension Installation
 
 **Marketplace:**
 1. Search for `The Lunite Programming Language` by (ing) Studios. Credit goes to (ing) Studios and ANW.
@@ -39,6 +54,7 @@ https://marketplace.visualstudio.com/items?itemName=ingStudiosOfficial.lunite
 * JavaScript syntax highlighting has been used for Lunite code samples.  
 * This manual is heavily simplified to be able to learn the language's basics quickly.
 * Features unique to Lunite in the current age of programming are marked with the 🌙 (crescent moon) emoji.
+* Check commits on Github for changelogs.
 
 ## 1. Getting Started
 
@@ -57,7 +73,7 @@ Lunite acts as both an interpreter and a compiler (via PyInstaller).
     python lunite.py run program.luna
     ```
 
-*   **[WIP] Build and Compile to Executable:**
+*   **Build and Compile to Executable:**
     Creates a standalone executable in the `./dist/` folder with PyInstaller.
     ```bash
     python lunite.py build program.luna
@@ -91,7 +107,42 @@ Add the directory to the path.
 export PATH="$PATH:/etc/lunite"
 ```
 
-**On Windows and On MacOS:** Instructions coming soon...
+**On Windows:**  
+Put `lunite.py` in a permanent location according to your choice, e.g., `C:\lunite\lunite.py`.  
+
+Create a file called `lunite.bat` in the same folder with:
+```batch
+@echo off
+python "C:\lunite\lunite.py" %*
+```
+
+Add `C:\lunite` (or whatever you chose) to PATH:  
+*   Press `Win + R` and enter: `sysdm.cpl`
+*   In the window, click `Advanced` and then `Environment Variables` button.
+*   Edit Path and add `C:\lunite`
+
+Restart your terminal after doing the above.  
+
+**On MacOS:**  
+
+Rename the `lunite.py` to `lunite`.
+```bash
+mv -v lunite.py lunite
+```
+
+Make it executable:
+```bash
+sudo chmod +x lunite
+```
+
+Move it to a location already in PATH (CHOOSE ONE OF THESE):
+```bash
+sudo mv -v lunite /usr/local/bin/lunite
+```
+OR for Apple Silicon:
+```bash
+sudo mv -v lunite /opt/homebrew/bin/lunite
+```
 
 ### File Extention
 Lunite's file extention is `.luna`.  
@@ -152,8 +203,8 @@ Lunite supports standard types and specific low-level wrappers.
 
 ## 3. Operators
 
-*   **Arithmetic:** `+`, `-`, `*`, `/`
-*   **Compound:** `+=`, `-=`, `*=`, `/=`
+*   **Arithmetic:** `+`, `-`, `*`, `/`, `%`
+*   **Compound:** `+=`, `-=`, `*=`, `/=`, `%=`
 *   **Comparison:** `==`, `!=`, `>`, `<`, `>=`, `<=`
 *   **Logical:** 
     *   AND: `&&` or `and`
@@ -333,26 +384,39 @@ Accessed via the global Regex object.
 ## 8. Modules
 
 ### Import Lunite Modules
-You can split code into multiple files or modules. For example,
+You can split code into multiple files or modules. Note that importing a Lunite file executes it in the current scope (similar to C includes), so defined functions become available directly:
 
-`utils.luna` can be:
+`utils.luna`:
 ```javascript
 func help() {
     out("Helping...")
 }
 ```
 
-`main.luna` can be:
+`mylib/hello.luna`:
 ```javascript
-import "utils"
-utils.help()
+func hello() {
+    out("Hello, Lunite!")
+}
+```
+
+`main.luna`:
+```javascript
+import "utils"              ~~ or import utils
+import "./mylib/hello.luna" ~~ or import hello from mylib or import "hello" from "mylib"
+
+help()  ~~ Accessed directly, not via 'utils.help()'
+hello()
 ```
 
 ### Import Python Modules
 You can also import Python modules using `import_py`. Example:
 ```javascript
-import_py "math"
+import_py "math"         ~~ or import_py math
+import_py sqrt from math
+
 out("Value of Pi: " + str(math.pi))
+out("Square root of 16: " + str(sqrt(16)))
 ```
 
 ---
@@ -409,6 +473,38 @@ out(f"5 squared is {5 * 5}")
 
 ---
 
+## 12. Error Diagnostics
+
+Lunite provides modern, colored, and location-aware error messages. Every error message reports:
+
+*   Error category (clearly labeled)
+*   Source file name
+*   Exact line and column number
+
+Example output screenshot:  
+![alt text](error-screenshot.png)
+
+This makes debugging significantly easier, especially for larger projects.
+
+---
+
+## 13. Escape Characters  
+
+| Escape Character | Name | Description |
+| :--- | :--- | :--- |
+| `\n` | Newline | Moves the cursor to the next line. |
+| `\r` | Carriage Return | Moves the cursor to the beginning of the current line. |
+| `\t` | Tab | Inserts a standard horizontal tab. |
+| `\h` | Horizontal Tab | Alias for `\t`, inserts a horizontal tab. |
+| `\b` | Backspace | Moves the cursor back one position (deletes previous character in output). |
+| `\0` | Null Character | Represents the null character (Unicode `\u0000`). |
+| `\\` | Backslash | Inserts a literal backslash character. |
+| `\'` | Single Quote | Inserts a single quote character (essential for `'` chars). |
+| `\"` | Double Quote | Inserts a double quote character (essential for `"` strings). |
+| `\uXXXX` | Unicode Character | Inserts a specific Unicode character defined by 4 hexadecimal digits (e.g., `\u03A9`). |
+
+---
+
 # Thank you!
 
-> "That is the end of what we can say briefly. To understand the language better, you can try to read the source code or try to make your own programs. Thanks!" - ANW, creator of Lunite.
+That is the end of what we can say briefly. To understand the language better, you can try to read the source code or try to make your own programs.

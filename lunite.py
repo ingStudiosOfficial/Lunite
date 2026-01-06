@@ -1,6 +1,6 @@
-#!/bin/python
+#!/usr/bin/env python3
 # /== == == == == == == == == == ==\
-# |==  LUNITE - v1.8.0 - by ANW  ==|
+# |==  LUNITE - v1.8.6 - by ANW  ==|
 # \== == == == == == == == == == ==/
 
 import sys
@@ -18,14 +18,38 @@ import time
 import random
 from dataclasses import dataclass, field
 from typing import Any, List, Dict, Optional, Tuple, Set
+try:
+    from colorama import init, Fore, Style
+    init(autoreset=True)
+except ImportError:
+    class ColoramaFallback:
+        def __getattr__(self, name): return ""
+    Fore = Style = ColoramaFallback()
 
 # ==========================================
 # VERSION & CONFIG
 # ==========================================
 
-LUNITE_VERSION_STR = "v1.8.0"
-COPYRIGHT          = "Copyright ANW, 2025"
-LUNITE_USER_AGENT  = "Lunite/1.8.0"
+LUNITE_VERSION_STR = "v1.8.6"
+COPYRIGHT          = "Copyright ANW, 2025-2026"
+LUNITE_USER_AGENT  = "Lunite/1.8.6"
+CURRENT_FILE       = "REPL"
+
+# ==========================================
+# CUSTOM EXCEPTION FORMATTER
+# ==========================================
+
+def lunite_error(kind, message, line=None, col=None):
+    loc = ""
+    file = CURRENT_FILE
+    if line is not None and col is not None:
+        loc = f"\n{Fore.MAGENTA}   File:{Style.RESET_ALL} {file}{Fore.MAGENTA}:{Style.RESET_ALL}{line}{Fore.MAGENTA}:{Style.RESET_ALL}{col}"
+
+    e = Exception(
+        f"{Fore.RED}{kind} Error:{Style.RESET_ALL} {message}" + loc
+    )
+    e.has_location = True
+    return e
 
 # ==========================================
 # TOKENS LIST
@@ -42,6 +66,7 @@ TOKEN_PLUS     = 'PLUS'
 TOKEN_MINUS    = 'MINUS'
 TOKEN_MUL      = 'MUL'
 TOKEN_DIV      = 'DIV'
+TOKEN_MOD      = 'MOD'
 TOKEN_LPAREN   = 'LPAREN'
 TOKEN_RPAREN   = 'RPAREN'
 TOKEN_LBRACE   = 'LBRACE'
@@ -68,6 +93,7 @@ TOKEN_PLUSEQ   = 'PLUSEQ'
 TOKEN_MINUSEQ  = 'MINUSEQ'
 TOKEN_MULEQ    = 'MULEQ'
 TOKEN_DIVEQ    = 'DIVEQ'
+TOKEN_MODEQ    = 'MODEQ'
 TOKEN_AND      = 'AND'
 TOKEN_OR       = 'OR'
 TOKEN_NOT      = 'NOT'
@@ -84,12 +110,13 @@ KEYWORDS = [
     'return', 'new', 'true', 'false', 'null', 'import',
     'attempt', 'rescue', 'extends', 'break', 'advance', 'leap',
     'match', 'other', 'and', 'or', 'not', 'const', 'import_py',
-    'enum', 'is'
+    'enum', 'is', 'from'
 ]
 
 # ==========================================
 # RUNTIME DATA TYPE WRAPPERS
 # ==========================================
+
 class LBit(int):
     def __new__(cls, value):
         val = int(value)
@@ -122,16 +149,24 @@ class Token:
     type: TokenType
     value: Any
     line: int
+    col: int
 
 class Lexer:
     def __init__(self, source_code):
         self.source = source_code
         self.pos = 0
         self.line = 1
+        self.col = 1
         self.current_char = self.source[0] if self.source else None
 
     def advance(self):
+        if self.current_char == '\n':
+            self.line += 1
+            self.col = 0
+        
         self.pos += 1
+        self.col += 1
+        
         if self.pos < len(self.source):
             self.current_char = self.source[self.pos]
         else:
@@ -152,40 +187,42 @@ class Lexer:
     def skip_comment(self):
         while self.current_char is not None and self.current_char != '\n':
             self.advance()
-        self.advance() # Skip newline
+        self.advance()
         self.line += 1
 
     def skip_multiline_comment(self):
         while self.current_char is not None:
             if self.current_char == '*' and self.peek() == '~':
-                self.advance() # consume *
-                self.advance() # consume ~
+                self.advance()
+                self.advance()
                 break
             if self.current_char == '\n':
                 self.line += 1
             self.advance()
 
     def make_identifier(self):
+        start_col = self.col
         id_str = ''
         while self.current_char is not None and (self.current_char.isalnum() or self.current_char == '_'):
             id_str += self.current_char
             self.advance()
         
         if id_str == 'and':
-            return Token(TOKEN_AND, 'and', self.line)
+            return Token(TOKEN_AND, 'and', self.line, start_col)
         if id_str == 'or':
-            return Token(TOKEN_OR, 'or', self.line)
+            return Token(TOKEN_OR, 'or', self.line, start_col)
         if id_str == 'not':
-            return Token(TOKEN_NOT, 'not', self.line)
+            return Token(TOKEN_NOT, 'not', self.line, start_col)
         if id_str == 'is':
-            return Token(TOKEN_IS, 'is', self.line)
+            return Token(TOKEN_IS, 'is', self.line, start_col)
 
         if id_str in KEYWORDS:
-            return Token(TOKEN_KEYWORD, id_str, self.line)
+            return Token(TOKEN_KEYWORD, id_str, self.line, start_col)
             
-        return Token(TOKEN_ID, id_str, self.line)
+        return Token(TOKEN_ID, id_str, self.line, start_col)
 
     def make_number(self):
+        start_col = self.col
         num_str = ''
         dot_count = 0
         
@@ -201,22 +238,42 @@ class Lexer:
             self.advance()
         
         if dot_count == 0:
-            return Token(TOKEN_INT, int(num_str), self.line)
+            return Token(TOKEN_INT, int(num_str), self.line, start_col)
         else:
-            return Token(TOKEN_FLOAT, float(num_str), self.line)
+            return Token(TOKEN_FLOAT, float(num_str), self.line, start_col)
 
     def make_string(self):
+        start_col = self.col
         quote = self.current_char
         self.advance()
         s = ''
         escape_map = {
-            'n': '\n', 't': '\t', 'r': '\r', '\\': '\\', '"': '"', "'": "'"
+            'n': '\n', 't': '\t', 'r': '\r', '\\': '\\', '"': '"', "'": "'",
+            'b': '\b', 'h': '\t', '0': '\0'
         }
         
         while self.current_char is not None and self.current_char != quote:
             if self.current_char == '\\':
                 self.advance()
-                if self.current_char in escape_map:
+                
+                # Unicode Hex \uXXXX
+                if self.current_char == 'u':
+                    self.advance()
+                    hex_str = ''
+                    for _ in range(4):
+                        if self.current_char is None:
+                             raise lunite_error("Syntax", "Unterminated Unicode escape sequence", self.line, self.col)
+                        if self.current_char not in "0123456789abcdefABCDEF":
+                             raise lunite_error("Syntax", f"Invalid Unicode hex character '{self.current_char}'", self.line, self.col)
+                        hex_str += self.current_char
+                        self.advance()
+                    try:
+                        s += chr(int(hex_str, 16))
+                    except ValueError:
+                         raise lunite_error("Syntax", f"Invalid Unicode sequence '\\u{hex_str}'", self.line, self.col)
+                    continue 
+
+                elif self.current_char in escape_map:
                     s += escape_map[self.current_char]
                 else:
                     s += '\\' 
@@ -224,87 +281,91 @@ class Lexer:
                         s += self.current_char
             else:
                 s += self.current_char
+            
             self.advance()
             
-        self.advance() # Close quote
+        self.advance()
         
         if quote == "'":
             if len(s) != 1:
-                raise Exception(f"Syntax Error: Char literal '{s}' must be exactly of length 1.")
-            return Token(TOKEN_CHAR, s, self.line)
+                raise lunite_error(
+                    "Syntax",
+                    "Char literal must be length 1",
+                    self.line,
+                    start_col
+                )
+            return Token(TOKEN_CHAR, s, self.line, start_col)
             
-        return Token(TOKEN_STRING, s, self.line)
+        return Token(TOKEN_STRING, s, self.line, start_col)
     
     def get_next_token(self):
         while self.current_char is not None:
+            start_col = self.col 
+            
             if self.current_char.isspace():
                 self.skip_whitespace()
                 continue
             
             if self.current_char == '~':
                 peek_char = self.peek()
-                
                 if peek_char == '~':
-                    self.advance()
-                    self.advance()
+                    self.advance(); self.advance()
                     self.skip_comment()
                     continue
-                
                 elif peek_char == '*':
-                    self.advance()
-                    self.advance()
+                    self.advance(); self.advance()
                     self.skip_multiline_comment()
                     continue
-                
                 else:
                     self.advance()
-                    return Token(TOKEN_BIT_NOT, '~', self.line)
+                    return Token(TOKEN_BIT_NOT, '~', self.line, start_col)
 
             if self.current_char == '/':
                 peek = self.peek()
                 if peek == '=':
                     self.advance(); self.advance()
-                    return Token(TOKEN_DIVEQ, '/=', self.line)
+                    return Token(TOKEN_DIVEQ, '/=', self.line, start_col)
                 else:
                     self.advance()
-                    return Token(TOKEN_DIV, '/', self.line)
+                    return Token(TOKEN_DIV, '/', self.line, start_col)
 
             if self.current_char == '&':
                 self.advance()
                 if self.current_char == '&':
                     self.advance()
-                    return Token(TOKEN_AND, '&&', self.line)
-                return Token(TOKEN_BIT_AND, '&', self.line)
+                    return Token(TOKEN_AND, '&&', self.line, start_col)
+                return Token(TOKEN_BIT_AND, '&', self.line, start_col)
 
             if self.current_char == '|':
                 self.advance()
                 if self.current_char == '|':
                     self.advance()
-                    return Token(TOKEN_OR, '||', self.line)
-                return Token(TOKEN_BIT_OR, '|', self.line)
+                    return Token(TOKEN_OR, '||', self.line, start_col)
+                return Token(TOKEN_BIT_OR, '|', self.line, start_col)
 
             if self.current_char == '^':
                 self.advance()
-                return Token(TOKEN_BIT_XOR, '^', self.line)
+                return Token(TOKEN_BIT_XOR, '^', self.line, start_col)
 
             if self.current_char == '<':
                 self.advance()
                 if self.current_char == '<':
                     self.advance()
-                    return Token(TOKEN_LSHIFT, '<<', self.line)
-                return Token(TOKEN_LT, '<', self.line)
+                    return Token(TOKEN_LSHIFT, '<<', self.line, start_col)
+                return Token(TOKEN_LT, '<', self.line, start_col)
 
             if self.current_char == '>':
                 self.advance()
                 if self.current_char == '>':
                     self.advance()
-                    return Token(TOKEN_RSHIFT, '>>', self.line)
-                return Token(TOKEN_GT, '>', self.line)
+                    return Token(TOKEN_RSHIFT, '>>', self.line, start_col)
+                return Token(TOKEN_GT, '>', self.line, start_col)
 
             if self.current_char == 'f' and self.peek() == '"':
                 self.advance()
                 token = self.make_string()
                 token.type = TOKEN_FSTRING
+                token.col = start_col
                 return token
 
             if self.current_char.isalpha() or self.current_char == '_':
@@ -317,7 +378,7 @@ class Lexer:
                 if self.peek() is not None and self.peek().isdigit():
                      return self.make_number()
                 self.advance()
-                return Token(TOKEN_DOT, '.', self.line)
+                return Token(TOKEN_DOT, '.', self.line, start_col)
             
             if self.current_char == '"' or self.current_char == "'":
                 return self.make_string()
@@ -326,90 +387,95 @@ class Lexer:
                 self.advance()
                 if self.current_char == '=':
                     self.advance()
-                    return Token(TOKEN_PLUSEQ, '+=', self.line)
-                return Token(TOKEN_PLUS, '+', self.line)
+                    return Token(TOKEN_PLUSEQ, '+=', self.line, start_col)
+                return Token(TOKEN_PLUS, '+', self.line, start_col)
 
             if self.current_char == '-':
                 self.advance()
                 if self.current_char == '=':
                     self.advance()
-                    return Token(TOKEN_MINUSEQ, '-=', self.line)
-                return Token(TOKEN_MINUS, '-', self.line)
+                    return Token(TOKEN_MINUSEQ, '-=', self.line, start_col)
+                return Token(TOKEN_MINUS, '-', self.line, start_col)
 
             if self.current_char == '*':
                 self.advance()
                 if self.current_char == '=':
                     self.advance()
-                    return Token(TOKEN_MULEQ, '*=', self.line)
-                return Token(TOKEN_MUL, '*', self.line)
+                    return Token(TOKEN_MULEQ, '*=', self.line, start_col)
+                return Token(TOKEN_MUL, '*', self.line, start_col)
+            
+            if self.current_char == '%':
+                self.advance()
+                if self.current_char == '=':
+                    self.advance()
+                    return Token(TOKEN_MODEQ, '%=', self.line, start_col)
+                return Token(TOKEN_MOD, '%', self.line, start_col)
             
             if self.current_char == '(':
                 self.advance()
-                return Token(TOKEN_LPAREN, '(', self.line)
+                return Token(TOKEN_LPAREN, '(', self.line, start_col)
             
             if self.current_char == ')':
                 self.advance()
-                return Token(TOKEN_RPAREN, ')', self.line)
+                return Token(TOKEN_RPAREN, ')', self.line, start_col)
             
             if self.current_char == '{':
                 self.advance()
-                return Token(TOKEN_LBRACE, '{', self.line)
+                return Token(TOKEN_LBRACE, '{', self.line, start_col)
             
             if self.current_char == '}':
                 self.advance()
-                return Token(TOKEN_RBRACE, '}', self.line)
+                return Token(TOKEN_RBRACE, '}', self.line, start_col)
             
             if self.current_char == '[':
                 self.advance()
-                return Token(TOKEN_LBRACKET, '[', self.line)
+                return Token(TOKEN_LBRACKET, '[', self.line, start_col)
             
             if self.current_char == ']':
                 self.advance()
-                return Token(TOKEN_RBRACKET, ']', self.line)
+                return Token(TOKEN_RBRACKET, ']', self.line, start_col)
             
             if self.current_char == ':':
                 self.advance()
-                return Token(TOKEN_COLON, ':', self.line)
+                return Token(TOKEN_COLON, ':', self.line, start_col)
             
             if self.current_char == ',':
                 self.advance()
-                return Token(TOKEN_COMMA, ',', self.line)
+                return Token(TOKEN_COMMA, ',', self.line, start_col)
             
             if self.current_char == '.':
                 self.advance()
-                return Token(TOKEN_DOT, '.', self.line)
+                return Token(TOKEN_DOT, '.', self.line, start_col)
             
             if self.current_char == '?':
                 self.advance()
-                return Token(TOKEN_QUESTION, '?', self.line)
+                return Token(TOKEN_QUESTION, '?', self.line, start_col)
             
             if self.current_char == '=':
                 self.advance()
                 if self.current_char == '>':
                     self.advance()
-                    return Token(TOKEN_ARROW, '=>', self.line)
+                    return Token(TOKEN_ARROW, '=>', self.line, start_col)
                 if self.current_char == '=': 
                     self.advance()
-                    return Token(TOKEN_EQ, '==', self.line)
-                return Token(TOKEN_ASSIGN, '=', self.line)
+                    return Token(TOKEN_EQ, '==', self.line, start_col)
+                return Token(TOKEN_ASSIGN, '=', self.line, start_col)
             
-            if self.current_char == '=':
-                self.advance()
-                if self.current_char == '=':
-                    self.advance()
-                    return Token(TOKEN_EQ, '==', self.line)
-                return Token(TOKEN_ASSIGN, '=', self.line)
-
             if self.current_char == '!':
                 self.advance()
                 if self.current_char == '=':
                     self.advance()
-                    return Token(TOKEN_NEQ, '!=', self.line)
-                return Token(TOKEN_NOT, '!', self.line)
+                    return Token(TOKEN_NEQ, '!=', self.line, start_col)
+                return Token(TOKEN_NOT, '!', self.line, start_col)
             
-            raise Exception(f"Syntax Error: Illegal character '{self.current_char}' found at line {self.line}")
+            raise lunite_error(
+                "Syntax",
+                f"Illegal character '{self.current_char}",
+                self.current_char.line,
+                self.current_char.col
+            )
 
-        return Token(TOKEN_EOF, None, self.line)
+        return Token(TOKEN_EOF, None, self.line, self.col)
         
 # ==========================================
 # AST
@@ -418,6 +484,7 @@ class Lexer:
 @dataclass
 class AST:
     line: int = field(default=0, init=False)
+    col: int = field(default=0, init=False)
 
 @dataclass
 class Number(AST):
@@ -522,6 +589,7 @@ class TryCatchStatement(AST):
 @dataclass
 class ImportStatement(AST):
     module_name: str
+    source_package: Optional[str] = None
 
 @dataclass
 class FunctionCall(AST):
@@ -590,6 +658,7 @@ class NewInstance(AST):
 class ImportPyStatement(AST):
     module_name: str
     alias: str
+    source_package: Optional[str] = None
 
 @dataclass
 class SetLiteral(AST):
@@ -645,13 +714,19 @@ class Parser:
         return is_atom and next_t == TOKEN_COLON
 
     def eat(self, token_type):
+        token = self.current_token
         if self.current_token.type == token_type:
             self.pos += 1
             if self.pos < len(self.tokens):
                 self.current_token = self.tokens[self.pos]
         else:
-            raise Exception(f"Syntax Error: Unexpected token of type {self.current_token.type}, expected type {token_type} at line {self.current_token.line}")
-
+            raise lunite_error(
+                "Syntax",
+                f"Unexpected token {self.current_token.type}, expected {token_type}",
+                token.line,
+                token.col
+            )
+    
     def parse_args(self):
         args = []
         if self.current_token.type != TOKEN_RPAREN:
@@ -666,24 +741,30 @@ class Parser:
         
         if token.type == TOKEN_INT or token.type == TOKEN_FLOAT:
             self.eat(token.type)
-            return Number(token)
+            node = Number(token)
+            node.line = token.line
+            node.col = token.col
+            return node
         
         elif token.type == TOKEN_CHAR:
             self.eat(TOKEN_CHAR)
-            return Char(token)
+            node = Char(token)
+            node.line = token.line
+            node.col = token.col
+            return node
         
         elif token.type == TOKEN_FSTRING:
             self.eat(TOKEN_FSTRING)
             pattern = r'\{([^}]+)\}'
             parts = re.split(pattern, token.value)
             
-            root = String(Token(TOKEN_STRING, "", token.line))
+            root = String(Token(TOKEN_STRING, "", token.line, token.col))
             
             for i, part in enumerate(parts):
                 if i % 2 == 0:
                     if part:
-                        lit = String(Token(TOKEN_STRING, part, token.line))
-                        root = BinaryOp(root, Token(TOKEN_PLUS, '+', token.line), lit)
+                        lit = String(Token(TOKEN_STRING, part, token.line, token.col))
+                        root = BinaryOp(root, Token(TOKEN_PLUS, '+', token.line, token.col), lit)
                 else:
                     sub_lexer = Lexer(part)
                     sub_tokens = []
@@ -696,25 +777,39 @@ class Parser:
                     sub_expr = sub_parser.expr()
                     
                     str_call = FunctionCall('str', [sub_expr])
-                    root = BinaryOp(root, Token(TOKEN_PLUS, '+', token.line), str_call)
+                    root = BinaryOp(root, Token(TOKEN_PLUS, '+', token.line, token.col), str_call)
             
+            root.line = token.line
+            root.col = token.col
             return root
-
+        
         elif token.type == TOKEN_STRING:
             self.eat(TOKEN_STRING)
-            return String(token)
+            node = String(token)
+            node.line = token.line
+            node.col = token.col
+            return node
         
         elif token.type == TOKEN_KEYWORD and token.value == 'true':
             self.eat(TOKEN_KEYWORD)
-            return Boolean(token, True)
+            node = Boolean(token, True)
+            node.line = token.line
+            node.col = token.col
+            return node
         
         elif token.type == TOKEN_KEYWORD and token.value == 'false':
             self.eat(TOKEN_KEYWORD)
-            return Boolean(token, False)
+            node = Boolean(token, False)
+            node.line = token.line
+            node.col = token.col
+            return node
         
         elif token.type == TOKEN_KEYWORD and token.value == 'null':
             self.eat(TOKEN_KEYWORD)
-            return Null()
+            node = Null()
+            node.line = token.line
+            node.col = token.col
+            return node
             
         elif token.type == TOKEN_LBRACKET:
             self.eat(TOKEN_LBRACKET)
@@ -725,13 +820,19 @@ class Parser:
                     self.eat(TOKEN_COMMA)
                     elements.append(self.expr())
             self.eat(TOKEN_RBRACKET)
-            return ListLiteral(elements)
+            node = ListLiteral(elements)
+            node.line = token.line
+            node.col = token.col
+            return node
 
         elif token.type == TOKEN_LBRACE:
             self.eat(TOKEN_LBRACE)
             if self.current_token.type == TOKEN_RBRACE:
                 self.eat(TOKEN_RBRACE)
-                return DictLiteral([])
+                node = DictLiteral([])
+                node.line = token.line
+                node.col = token.col
+                return node
             
             first = self.expr()
             
@@ -746,14 +847,20 @@ class Parser:
                     v = self.expr()
                     pairs.append((k, v))
                 self.eat(TOKEN_RBRACE)
-                return DictLiteral(pairs)
+                node = DictLiteral(pairs)
+                node.line = token.line
+                node.col = token.col
+                return node
             else:
                 elements = [first]
                 while self.current_token.type == TOKEN_COMMA:
                     self.eat(TOKEN_COMMA)
                     elements.append(self.expr())
                 self.eat(TOKEN_RBRACE)
-                return SetLiteral(elements)
+                node = SetLiteral(elements)
+                node.line = token.line
+                node.col = token.col
+                return node
 
         elif token.type == TOKEN_KEYWORD and token.value == 'new':
             self.eat(TOKEN_KEYWORD)
@@ -762,14 +869,20 @@ class Parser:
             self.eat(TOKEN_LPAREN)
             args = self.parse_args()
             self.eat(TOKEN_RPAREN)
-            return NewInstance(class_name, args)
+            node = NewInstance(class_name, args)
+            node.line = token.line
+            node.col = token.col
+            return node
         
         elif token.type == TOKEN_KEYWORD and token.value == 'in':
             self.eat(TOKEN_KEYWORD)
             self.eat(TOKEN_LPAREN)
             args = self.parse_args()
             self.eat(TOKEN_RPAREN)
-            return FunctionCall('in', args)
+            node = FunctionCall('in', args)
+            node.line = token.line
+            node.col = token.col
+            return node
 
         elif token.type == TOKEN_ID:
             name = token.value
@@ -779,7 +892,10 @@ class Parser:
                 args = self.parse_args()
                 self.eat(TOKEN_RPAREN)
                 return FunctionCall(name, args)
-            return Identifier(token)
+            node = Identifier(token)
+            node.line = token.line
+            node.col = token.col
+            return node
         
         elif token.type == TOKEN_LPAREN:
             self.eat(TOKEN_LPAREN)
@@ -796,7 +912,10 @@ class Parser:
                     else:
                         expr = self.expr()
                         return LambdaExpr([], expr)
-                return TupleLiteral([])
+                node = TupleLiteral([])
+                node.line = token.line
+                node.col = token.col
+                return node
             
             exprs = []
             exprs.append(self.expr())
@@ -815,20 +934,37 @@ class Parser:
                     if isinstance(e, Identifier):
                         params.append(e.token.value)
                     else:
-                        raise Exception("Syntax Error: Lambda parameters must be identifiers")
+                        raise lunite_error(
+                            "Syntax",
+                            "Lambda parameters must be identifiers",
+                            self.current_token.line,
+                            self.current_token.col
+                        )
                 
                 if self.current_token.type == TOKEN_LBRACE:
                     self.eat(TOKEN_LBRACE)
                     body = self.block()
                     self.eat(TOKEN_RBRACE)
-                    return LambdaExpr(params, body)
+                    node = LambdaExpr(params, body)
                 else:
-                    return LambdaExpr(params, self.expr())
+                    node = LambdaExpr(params, self.expr())
+
+                node.line = token.line
+                node.col = token.col
+                return node
 
             if len(exprs) == 1: return exprs[0]
-            return TupleLiteral(exprs)
+            node = TupleLiteral(exprs)
+            node.line = token.line
+            node.col = token.col
+            return node
         
-        raise Exception(f"Syntax Error: Invalid atom {token.value} found at line {token.line}")
+        raise lunite_error(
+            "Syntax",
+            f"Invalid atom '{token.value}'",
+            token.line,
+            token.col
+        )
 
     def factor(self):
         token = self.current_token
@@ -836,6 +972,8 @@ class Parser:
         if token.type in (TOKEN_PLUS, TOKEN_MINUS, TOKEN_BIT_NOT, TOKEN_NOT):
             self.eat(token.type)
             node = UnaryOp(op=token, expr=self.factor())
+            node.line = token.line
+            node.col = token.col
             return node
 
         node = self.atom()
@@ -850,23 +988,31 @@ class Parser:
                     args = self.parse_args()
                     self.eat(TOKEN_RPAREN)
                     node = MethodCall(node, member_name, args)
+                    node.line = self.current_token.line
+                    node.col = self.current_token.col
                 else:
                     node = MemberAccess(node, member_name)
+                    node.line = self.current_token.line
+                    node.col = self.current_token.col
             
             elif self.current_token.type == TOKEN_LBRACKET:
                 self.eat(TOKEN_LBRACKET)
                 index = self.expr()
                 self.eat(TOKEN_RBRACKET)
                 node = IndexAccess(node, index)
+                node.line = index.line
+                node.col = index.col
         
         return node
 
     def term(self):
         node = self.factor()
-        while self.current_token.type in (TOKEN_MUL, TOKEN_DIV):
+        while self.current_token.type in (TOKEN_MUL, TOKEN_DIV, TOKEN_MOD):
             token = self.current_token
             self.eat(token.type)
             node = BinaryOp(left=node, op=token, right=self.factor())
+            node.line = token.line
+            node.col = token.col
         return node
     
     def math_expr(self):
@@ -875,6 +1021,8 @@ class Parser:
             token = self.current_token
             self.eat(token.type)
             node = BinaryOp(left=node, op=token, right=self.term())
+            node.line = token.line
+            node.col = token.col
         return node
     
     def shift_expr(self):
@@ -883,6 +1031,8 @@ class Parser:
             token = self.current_token
             self.eat(token.type)
             node = BinaryOp(left=node, op=token, right=self.math_expr())
+            node.line = token.line
+            node.col = token.col
         return node
     
     def bitwise_expr(self):
@@ -891,6 +1041,8 @@ class Parser:
             token = self.current_token
             self.eat(token.type)
             node = BinaryOp(left=node, op=token, right=self.shift_expr())
+            node.line = token.line
+            node.col = token.col
         return node
     
     def comp_expr(self):
@@ -901,8 +1053,12 @@ class Parser:
             if token.type == TOKEN_IS:
                 target = self.bitwise_expr()
                 node = TypeCheckOp(node, target)
+                node.line = token.line
+                node.col = token.col
             else:
                 node = BinaryOp(left=node, op=token, right=self.bitwise_expr())
+                node.line = token.line
+                node.col = token.col
         return node
 
     def arithmetic_expr(self):
@@ -911,6 +1067,8 @@ class Parser:
             token = self.current_token
             self.eat(token.type)
             node = BinaryOp(left=node, op=token, right=self.term())
+            node.line = token.line
+            node.col = token.col
         return node
 
     def logic_expr(self):
@@ -919,9 +1077,12 @@ class Parser:
             token = self.current_token
             self.eat(token.type)
             node = BinaryOp(left=node, op=token, right=self.comp_expr())
+            node.line = token.line
+            node.col = token.col
         return node
 
     def expr(self):
+        token = self.current_token
         node = self.logic_expr()
         
         if self.current_token.type == TOKEN_QUESTION:
@@ -929,18 +1090,21 @@ class Parser:
             true_expr = self.expr()
             self.eat(TOKEN_COLON)
             false_expr = self.expr()
-            return TernaryOp(node, true_expr, false_expr)
+            node = TernaryOp(node, true_expr, false_expr)
         
+        node.line = token.line
+        node.col = token.col
         return node
 
     def parse_statement(self):
-        # Capture line number of the start of the statement
         start_line = self.current_token.line
+        start_col = self.current_token.col
+        
         node = self._parse_statement_body()
         
-        # Attach line number to the AST node
         if isinstance(node, AST):
             node.line = start_line
+            node.col = start_col
         return node
 
     def _parse_statement_body(self):
@@ -948,16 +1112,43 @@ class Parser:
         
         if token.type == TOKEN_KEYWORD and token.value == 'import':
             self.eat(TOKEN_KEYWORD)
+            module_name = ""
+            
             if self.current_token.type == TOKEN_ID:
-                name = self.current_token.value
+                module_name = self.current_token.value
                 self.eat(TOKEN_ID)
-                return ImportStatement(name)
             elif self.current_token.type == TOKEN_STRING:
-                name = self.current_token.value
+                module_name = self.current_token.value
                 self.eat(TOKEN_STRING)
-                return ImportStatement(name)
             else:
-                raise Exception("Syntax Error: Expected module name after 'import'")
+                raise lunite_error(
+                    "Syntax",
+                    "Expected module name after 'import'",
+                    token.line,
+                    token.col
+                )
+            
+            source_package = None
+            if self.current_token.type == TOKEN_KEYWORD and self.current_token.value == 'from':
+                self.eat(TOKEN_KEYWORD)
+                if self.current_token.type == TOKEN_STRING:
+                    source_package = self.current_token.value
+                    self.eat(TOKEN_STRING)
+                elif self.current_token.type == TOKEN_ID:
+                    source_package = self.current_token.value
+                    self.eat(TOKEN_ID)
+                else:
+                    raise lunite_error(
+                        "Syntax",
+                        "Expected package name after 'from'",
+                        self.current_token.line,
+                        self.current_token.col
+                    )
+
+            node = ImportStatement(module_name, source_package)
+            node.line = token.line
+            node.col = token.col
+            return node
             
         elif token.type == TOKEN_KEYWORD and token.value == 'import_py':
             self.eat(TOKEN_KEYWORD)
@@ -969,9 +1160,34 @@ class Parser:
                 name = self.current_token.value
                 self.eat(TOKEN_STRING)
             else:
-                raise Exception("Syntax Error: Expected Python module name after 'import_py'")
+                raise lunite_error(
+                    "Syntax",
+                    "Expected Python module name after 'import_py'",
+                    token.line,
+                    token.col
+                )
             
-            return ImportPyStatement(name, alias=name)
+            source_package = None
+            if self.current_token.type == TOKEN_KEYWORD and self.current_token.value == 'from':
+                self.eat(TOKEN_KEYWORD)
+                if self.current_token.type == TOKEN_STRING:
+                    source_package = self.current_token.value
+                    self.eat(TOKEN_STRING)
+                elif self.current_token.type == TOKEN_ID:
+                    source_package = self.current_token.value
+                    self.eat(TOKEN_ID)
+                else:
+                    raise lunite_error(
+                        "Import",
+                        "Expected Python package name after 'from'",
+                        self.current_token.line,
+                        self.current_token.col
+                    )
+            
+            node = ImportPyStatement(name, alias=name, source_package=source_package)
+            node.line = token.line
+            node.col = token.col
+            return node
 
         elif token.type == TOKEN_KEYWORD and (token.value == 'let' or token.value == 'const'):
             is_const = (token.value == 'const')
@@ -995,13 +1211,19 @@ class Parser:
                 self.eat(TOKEN_RBRACKET)
                 self.eat(TOKEN_ASSIGN)
                 val = self.expr()
-                return DestructuringDecl(names, val, is_const)
+                node = DestructuringDecl(names, val, is_const)
+                node.line = token.line
+                node.col = token.col
+                return node
 
             var_name = self.current_token.value
             self.eat(TOKEN_ID)
             self.eat(TOKEN_ASSIGN)
             val = self.expr()
-            return VarDecl(var_name, val, is_const)
+            node = VarDecl(var_name, val, is_const)
+            node.line = token.line
+            node.col = token.col
+            return node
         
         elif token.type == TOKEN_KEYWORD and token.value == 'func':
             self.eat(TOKEN_KEYWORD)
@@ -1011,7 +1233,6 @@ class Parser:
             
             params = []
             if self.current_token.type != TOKEN_RPAREN:
-                # 1st Param
                 p_name = self.current_token.value
                 self.eat(TOKEN_ID)
                 p_def = None
@@ -1020,7 +1241,6 @@ class Parser:
                     p_def = self.expr()
                 params.append((p_name, p_def))
                 
-                # Rest
                 while self.current_token.type == TOKEN_COMMA:
                     self.eat(TOKEN_COMMA)
                     p_name = self.current_token.value
@@ -1035,7 +1255,10 @@ class Parser:
             self.eat(TOKEN_LBRACE)
             body = self.block()
             self.eat(TOKEN_RBRACE)
-            return FunctionDef(func_name, params, body)
+            node = FunctionDef(func_name, params, body)
+            node.line = token.line
+            node.col = token.col
+            return node
 
         elif token.type == TOKEN_KEYWORD and token.value == 'class':
             self.eat(TOKEN_KEYWORD)
@@ -1052,12 +1275,18 @@ class Parser:
             body = self.block()
             self.eat(TOKEN_RBRACE)
             
-            return ClassDef(class_name, body, superclass)
+            node = ClassDef(class_name, body, superclass)
+            node.line = token.line
+            node.col = token.col
+            return node
 
         elif token.type == TOKEN_KEYWORD and token.value == 'return':
             self.eat(TOKEN_KEYWORD)
             val = self.expr()
-            return ReturnStatement(val)
+            node = ReturnStatement(val)
+            node.line = token.line
+            node.col = token.col
+            return node
 
         elif token.type == TOKEN_KEYWORD and token.value == 'if':
             self.eat(TOKEN_KEYWORD)
@@ -1067,13 +1296,24 @@ class Parser:
             self.eat(TOKEN_LBRACE)
             true_block = self.block()
             self.eat(TOKEN_RBRACE)
+            
             false_block = None
             if self.current_token.type == TOKEN_KEYWORD and self.current_token.value == 'else':
                 self.eat(TOKEN_KEYWORD)
-                self.eat(TOKEN_LBRACE)
-                false_block = self.block()
-                self.eat(TOKEN_RBRACE)
-            return IfStatement(cond, true_block, false_block)
+                
+                if self.current_token.type == TOKEN_KEYWORD and self.current_token.value == 'if':
+                    stmt = self.parse_statement()
+                    false_block = Block([stmt])
+                    false_block.line = stmt.line
+                else:
+                    self.eat(TOKEN_LBRACE)
+                    false_block = self.block()
+                    self.eat(TOKEN_RBRACE)
+            
+            node = IfStatement(cond, true_block, false_block)
+            node.line = token.line
+            node.col = token.col
+            return node
 
         elif token.type == TOKEN_KEYWORD and token.value == 'while':
             self.eat(TOKEN_KEYWORD)
@@ -1083,7 +1323,10 @@ class Parser:
             self.eat(TOKEN_LBRACE)
             body = self.block()
             self.eat(TOKEN_RBRACE)
-            return WhileStatement(cond, body)
+            node = WhileStatement(cond, body)
+            node.line = token.line
+            node.col = token.col
+            return node
 
         elif token.type == TOKEN_KEYWORD and token.value == 'for':
             self.eat(TOKEN_KEYWORD)
@@ -1092,12 +1335,20 @@ class Parser:
             if self.current_token.type == TOKEN_KEYWORD and self.current_token.value == 'in':
                 self.eat(TOKEN_KEYWORD)
             else:
-                raise Exception("Syntax Error: Expected 'in' after for loop's variable")
+                raise lunite_error(
+                    "Syntax",
+                    "Expected 'in' after 'for'",
+                    token.line,
+                    token.col
+                )
             iterable = self.expr()
             self.eat(TOKEN_LBRACE)
             body = self.block()
             self.eat(TOKEN_RBRACE)
-            return ForStatement(iter_name, iterable, body)
+            node = ForStatement(iter_name, iterable, body)
+            node.line = token.line
+            node.col = token.col
+            return node
 
         elif token.type == TOKEN_KEYWORD and token.value == 'attempt':
             self.eat(TOKEN_KEYWORD)
@@ -1113,9 +1364,17 @@ class Parser:
                 self.eat(TOKEN_LBRACE)
                 catch_block = self.block()
                 self.eat(TOKEN_RBRACE)
-                return TryCatchStatement(try_block, error_var, catch_block)
+                node = TryCatchStatement(try_block, error_var, catch_block)
+                node.line = token.line
+                node.col = token.col
+                return node
             else:
-                raise Exception("Syntax Error: No 'rescue' block found after 'attempt'")
+                raise lunite_error(
+                    "Syntax",
+                    "Expected 'rescue' after 'attempt'",
+                    token.line,
+                    token.col
+                )
             
         elif token.type == TOKEN_KEYWORD and token.value == 'enum':
             self.eat(TOKEN_KEYWORD)
@@ -1133,28 +1392,45 @@ class Parser:
                     self.eat(TOKEN_ID)
             
             self.eat(TOKEN_RBRACE)
-            return EnumDef(name, members)
+            node = EnumDef(name, members)
+            node.line = token.line
+            node.col = token.col
+            return node
 
         elif token.type == TOKEN_KEYWORD and token.value == 'break':
             self.eat(TOKEN_KEYWORD)
-            return BreakStatement()
+            node = BreakStatement()
+            node.line = token.line
+            node.col = token.col
+            return node
 
         elif token.type == TOKEN_KEYWORD and token.value == 'advance':
             self.eat(TOKEN_KEYWORD)
-            return AdvanceStatement()
+            node = AdvanceStatement()
+            node.line = token.line
+            node.col = token.col
+            return node
 
         elif token.type == TOKEN_KEYWORD and token.value == 'leap':
             self.eat(TOKEN_KEYWORD)
             if self.current_token.type == TOKEN_ID:
                 target = Identifier(self.current_token)
                 self.eat(TOKEN_ID)
-                return LeapStatement(target)
+                node = LeapStatement(target)
             elif self.current_token.type == TOKEN_INT:
                 target = Number(self.current_token)
                 self.eat(TOKEN_INT)
-                return LeapStatement(target)
+                node = LeapStatement(target)
             else:
-                raise Exception("Syntax Error: Leap target must be a label name or line number")
+                raise lunite_error(
+                    "Syntax",
+                    "Expected label name or line number after 'leap'",
+                    token.line,
+                    token.col
+                )
+            node.line = token.line
+            node.col = token.col
+            return node
     
         elif token.type == TOKEN_LBRACE:
             if (self.pos + 1 < len(self.tokens) and 
@@ -1166,11 +1442,16 @@ class Parser:
                 name = self.current_token.value
                 self.eat(TOKEN_ID)
                 self.eat(TOKEN_RBRACE)
-                return LabelDef(name)
+                node = LabelDef(name)
+                node.line = token.line
+                node.col = token.col
+                return node
             
             self.eat(TOKEN_LBRACE)
             body = self.block()
             self.eat(TOKEN_RBRACE)
+            body.line = token.line
+            body.col = token.col
             return body
 
         elif token.type == TOKEN_KEYWORD and token.value == 'match':
@@ -1210,23 +1491,30 @@ class Parser:
                     cases.append(MatchCase(val, Block(stmts)))
 
             self.eat(TOKEN_RBRACE)
-            return MatchStatement(subject, cases, default_block)
+            node = MatchStatement(subject, cases, default_block)
+            node.line = token.line
+            node.col = token.col
+            return node
 
         else:
             expr_node = self.expr()
             
-            # Normal Assign
             if self.current_token.type == TOKEN_ASSIGN:
                 self.eat(TOKEN_ASSIGN)
                 val = self.expr()
-                return Assign(expr_node, val)
+                node = Assign(expr_node, val)
+                node.line = token.line
+                node.col = token.col
+                return token
             
-            # Compound Assign
-            elif self.current_token.type in (TOKEN_PLUSEQ, TOKEN_MINUSEQ, TOKEN_MULEQ, TOKEN_DIVEQ):
+            elif self.current_token.type in (TOKEN_PLUSEQ, TOKEN_MINUSEQ, TOKEN_MULEQ, TOKEN_DIVEQ, TOKEN_MODEQ):
                 op = self.current_token
                 self.eat(op.type)
                 val = self.expr()
-                return CompoundAssign(expr_node, op, val)
+                node = CompoundAssign(expr_node, op, val)
+                node.line = token.line
+                node.col = token.col
+                return token
                 
             return expr_node
     
@@ -1234,13 +1522,19 @@ class Parser:
         statements = []
         while self.current_token.type != TOKEN_RBRACE and self.current_token.type != TOKEN_EOF:
             statements.append(self.parse_statement())
-        return Block(statements)
+        node = Block(statements)
+        node.line = self.current_token.line
+        node.col = self.current_token.col
+        return node
 
     def parse(self):
         statements = []
         while self.current_token.type != TOKEN_EOF:
             statements.append(self.parse_statement())
-        return Block(statements)
+        node = Block(statements)
+        node.line = self.current_token.line
+        node.col = self.current_token.col
+        return node
 
 # ==========================================
 # INTERPRETER & ENVIRONMENT
@@ -1252,28 +1546,43 @@ class Environment:
         self.constants = set()
         self.parent = parent
 
-    def get(self, name):
+    def get(self, name, line, col):
         if name in self.values:
             return self.values[name]
         if self.parent:
-            return self.parent.get(name)
-        raise Exception(f"Runtime Error: Variable '{name}' is undefined")
+            return self.parent.get(name, line, col)
+        raise lunite_error(
+            "Runtime",
+            f"Variable '{name}' is undefined",
+            line,
+            col
+        )
 
     def define(self, name, value, is_const=False):
         self.values[name] = value
         if is_const:
             self.constants.add(name)
 
-    def assign(self, name, value):
+    def assign(self, name, value, line, col):
         if name in self.values:
             if name in self.constants:
-                raise Exception(f"Runtime Error: Cannot reassign constant '{name}'")
+                raise lunite_error(
+                    "Runtime",
+                    f"Cannot reassign constant '{name}'",
+                    line,
+                    col
+                )
             self.values[name] = value
             return
         if self.parent:
-            self.parent.assign(name, value)
+            self.parent.assign(name, value, line, col)
             return
-        raise Exception(f"Runtime Error: Undefined variable '{name}' cannot be assigned a value")
+        raise lunite_error(
+            "Runtime",
+            f"Undefined variable '{name}' cannot be assigned a value",
+            line,
+            col
+        )
     
 class LuniteInstance:
     def __init__(self, mold_node):
@@ -1281,12 +1590,17 @@ class LuniteInstance:
         self.fields = {}
         self.methods = {}
     
-    def get(self, name):
+    def get(self, name, line, col):
         if name in self.fields:
             return self.fields[name]
         if name in self.methods:
             return self.methods[name]
-        raise Exception(f"Runtime Error: Class '{self.mold.name}' does not contain the property '{name}'")
+        raise lunite_error(
+            "Runtime",
+            f"Class '{self.mold.name}' does not contain the property '{name}'",
+            line,
+            col
+        )
 
     def set(self, name, val):
         self.fields[name] = val
@@ -1337,7 +1651,10 @@ class Interpreter:
                 if type_hint == "char": return LChar(text)
                 return text
             except ValueError:
-                raise Exception(f"Input Error: Failed to convert '{text}' to type {type_hint}")
+                raise lunite_error(
+                    "STD LIB Input",
+                    f"Failed to convert '{text}' to type {type_hint}"
+                )
                 
         self.global_env.define('in', lunite_input)
         
@@ -1345,12 +1662,20 @@ class Interpreter:
         def read_file(path):
             try:
                 with open(path, 'r') as f: return f.read()
-            except Exception as e: raise Exception(str(e))
+            except Exception as e:
+                raise lunite_error(
+                    "STD LIB FIO Read",
+                    str(e)
+                )
         
         def write_file(path, content):
             try:
                 with open(path, 'w') as f: f.write(clean_str(content))
-            except Exception as e: raise Exception(str(e))
+            except Exception as e:
+                raise lunite_error(
+                    "STD LIB FIO Write",
+                    str(e)
+                )
         
         self.global_env.define('read_file', read_file)
         self.global_env.define('write_file', write_file)
@@ -1388,7 +1713,10 @@ class Interpreter:
                 with urllib.request.urlopen(url) as response:
                    return response.read().decode('utf-8')
             except Exception as e:
-                raise Exception(str(e))
+                raise lunite_error(
+                    "STD LIB HTTP GET",
+                    str(e)
+                )
         
         def http_post(url, data):
             try:
@@ -1403,7 +1731,10 @@ class Interpreter:
                 with urllib.request.urlopen(req) as response:
                     return response.read().decode('utf-8')
             except Exception as e:
-                raise Exception(str(e))
+                raise lunite_error(
+                    "STD LIB FIO HTTP POST",
+                    str(e)
+                )
 
         self.global_env.define('http_get', http_get)
         self.global_env.define('http_post', http_post)
@@ -1420,7 +1751,11 @@ class Interpreter:
             try:
                 if isinstance(data, str): data = data.encode('utf-8')
                 with open(path, 'wb') as f: f.write(data)
-            except Exception as e: raise Exception(str(e))
+            except Exception as e:
+                raise lunite_error(
+                    "STD LIB BIO Write",
+                    str(e)
+                )
 
         self.global_env.define('read_bytes', read_bytes)
         self.global_env.define('write_bytes', write_bytes)
@@ -1519,10 +1854,28 @@ class Interpreter:
     def visit(self, node):
         method_name = f'visit_{type(node).__name__}'
         method = getattr(self, method_name, self.no_visit)
-        return method(node)
+        
+        try:
+            return method(node)
+        except Exception as e:
+            if hasattr(e, "has_location") and e.has_location:
+                raise e
+
+            err = lunite_error(
+                "Runtime",
+                str(e),
+                node.line,
+                node.col
+            )
+            raise err
 
     def no_visit(self, node):
-        raise Exception(f"Internal Lunite Error: No visit_{type(node).__name__} method defined")
+        raise lunite_error(
+            "Internal Lunite",
+            f"No visit_{type(node).__name__} method defined in Lunite",
+            node.line,
+            node.col
+        )
 
     def visit_Block(self, node):
         result = None
@@ -1577,7 +1930,7 @@ class Interpreter:
         return {self.visit(k): self.visit(v) for k, v in node.pairs}
 
     def visit_Identifier(self, node):
-        return self.env.get(node.token.value)
+        return self.env.get(node.token.value, node.line, node.col)
 
     def visit_MatchCase(self, node):
         return self.visit(node.value)
@@ -1632,6 +1985,11 @@ class Interpreter:
         if op == TOKEN_MINUS: return left - right
         if op == TOKEN_MUL: return left * right
         if op == TOKEN_DIV: return left / right
+        if op == TOKEN_MOD: 
+            val = math.fmod(left, right)
+            if isinstance(left, int) and isinstance(right, int):
+                return int(val)
+            return val
         
         # Bitwise
         if op == TOKEN_BIT_AND: return left & right
@@ -1663,14 +2021,19 @@ class Interpreter:
         val = self.visit(node.value)
         
         if isinstance(node.left, Identifier):
-            self.env.assign(node.left.token.value, val)
+            self.env.assign(node.left.token.value, val, node.line, node.col)
         
         elif isinstance(node.left, MemberAccess):
             obj = self.visit(node.left.obj)
             if isinstance(obj, LuniteInstance):
                 obj.set(node.left.member_name, val)
             else:
-                raise Exception("Assignment Error: Cannot set a property on a non-instance")
+                raise lunite_error(
+                    "Assignment",
+                    "Cannot set a property on a non-instance",
+                    node.line,
+                    node.col
+                )
         
         elif isinstance(node.left, IndexAccess):
             target = self.visit(node.left.target)
@@ -1678,18 +2041,33 @@ class Interpreter:
             try:
                 target[index] = val
             except TypeError:
-                raise Exception("Assignment Error: Target does not support index assignment")
+                raise lunite_error(
+                    "Assignment",
+                    "Target does not support index assignment",
+                    node.line,
+                    node.col
+                )
             except IndexError:
-                raise Exception("Assignment Error: Provided index is out of bounds")
+                raise lunite_error(
+                    "Assignment",
+                    "Provided index is out of bounds",
+                    node.line,
+                    node.col
+                )
         else:
-            raise Exception("Assignment Error: No such assignment target")
+            raise lunite_error(
+                "Assignment",
+                "No such assignment target",
+                node.line,
+                node.col
+            )
 
         return val
 
     def visit_CompoundAssign(self, node):
         curr_val = 0
         if isinstance(node.left, Identifier):
-            curr_val = self.env.get(node.left.token.value)
+            curr_val = self.env.get(node.left.token.value, node.line, node.col)
         elif isinstance(node.left, MemberAccess):
             obj = self.visit(node.left.obj)
             curr_val = obj.get(node.left.member_name)
@@ -1698,7 +2076,12 @@ class Interpreter:
             index = self.visit(node.left.index)
             curr_val = target[index]
         else:
-            raise Exception("Invalid target for compound assignment")
+            raise lunite_error(
+                "Assignment",
+                "Invalid target for compound assignment",
+                node.line,
+                node.col
+            )
 
         right_val = self.visit(node.value)
         op = node.op.type
@@ -1708,30 +2091,21 @@ class Interpreter:
         if op == TOKEN_MINUSEQ: new_val -= right_val
         if op == TOKEN_MULEQ: new_val *= right_val
         if op == TOKEN_DIVEQ: new_val /= right_val
+        if op == TOKEN_MODEQ: 
+            val = math.fmod(curr_val, right_val)
+            if isinstance(curr_val, int) and isinstance(right_val, int):
+                new_val = int(val)
+            else:
+                new_val = val
 
         if isinstance(node.left, Identifier):
-            self.env.assign(node.left.token.value, new_val)
+            self.env.assign(node.left.token.value, new_val, node.left.token.line. node.left.token.col)
         elif isinstance(node.left, MemberAccess):
             obj.set(node.left.member_name, new_val)
         elif isinstance(node.left, IndexAccess):
             target[self.visit(node.left.index)] = new_val
             
         return new_val
-
-    def visit_BinaryOp(self, node):
-        left = self.visit(node.left)
-        right = self.visit(node.right)
-        op = node.op.type
-
-        if op == TOKEN_PLUS: return left + right
-        if op == TOKEN_MINUS: return left - right
-        if op == TOKEN_MUL: return left * right
-        if op == TOKEN_DIV: return left / right
-        if op == TOKEN_GT: return left > right
-        if op == TOKEN_LT: return left < right
-        if op == TOKEN_EQ: return left == right
-        if op == TOKEN_NEQ: return left != right
-        return None
 
     def visit_IfStatement(self, node):
         if self.visit(node.condition):
@@ -1751,7 +2125,12 @@ class Interpreter:
     def visit_ForStatement(self, node):
         iterable = self.visit(node.iterable)
         if not hasattr(iterable, '__iter__'):
-             raise Exception("Loop Error: For loop expects an iterable, but none were provided")
+            raise lunite_error(
+                "Loop",
+                "Expected iterable for 'for' loop",
+                node.line,
+                node.col
+            )
 
         prev_env = self.env
         for item in iterable:
@@ -1804,20 +2183,37 @@ class Interpreter:
                 self.env = prev_env
 
     def visit_ImportStatement(self, node):
-        fname = node.module_name
-        if not fname.endswith('.luna'):
-            fname += '.luna'
+        target_file = ""
         
-        if fname in self.imported_files:
+        if node.source_package:
+            base_dir = node.source_package
+            mod_name = node.module_name
+            if not mod_name.endswith('.luna'): mod_name += '.luna'
+            target_file = os.path.join(base_dir, mod_name)
+            
+        elif os.path.sep in node.module_name or '/' in node.module_name:
+             target_file = node.module_name
+             if not target_file.endswith('.luna'): target_file += '.luna'
+             
+        else:
+            target_file = node.module_name
+            if not target_file.endswith('.luna'): target_file += '.luna'
+        
+        target_file = os.path.normpath(target_file)
+        
+        if target_file in self.imported_files:
             return 
         
-        if not os.path.exists(fname):
-             raise Exception(f"Import Error: Module '{fname}' not found or does not exist")
+        if not os.path.exists(target_file):
+             raise lunite_error("Import", f"Module '{target_file}' not found", node.line, node.col)
         
-        with open(fname, 'r') as f:
-            code = f.read()
+        try:
+            with open(target_file, 'r') as f:
+                code = f.read()
+        except Exception as e:
+            raise lunite_error("Import", f"Failed to read '{target_file}': {str(e)}", node.line, node.col)
         
-        self.imported_files.add(fname)
+        self.imported_files.add(target_file)
         
         lexer = Lexer(code)
         tokens = []
@@ -1843,13 +2239,18 @@ class Interpreter:
         raise ReturnException(val)
 
     def visit_FunctionCall(self, node):
-        func = self.env.get(node.name)
-        if callable(func): # Std Lib
+        func = self.env.get(node.name, node.line, node.col)
+        if callable(func):
             try:
                 args = [self.visit(arg) for arg in node.args]
                 return func(*args)
             except Exception as e:
-                raise Exception(str(e))
+                raise lunite_error(
+                    "Function",
+                    str(e),
+                    node.line,
+                    node.col
+                )
         
         if isinstance(func, (FunctionDef, LambdaExpr)):
             prev_env = self.env
@@ -1860,19 +2261,27 @@ class Interpreter:
                 f_params = [(p, None) for p in f_params]
 
             if len(node.args) > len(f_params):
-                raise Exception(f"Function Error: Too many arguments.")
+                raise lunite_error(
+                    "Function",
+                    f"Too many arguments (expected {len(f_params)}, got {len(node.args)})",
+                    node.line,
+                    node.col
+                )
 
             for i, (p_name, p_default) in enumerate(f_params):
                 if i < len(node.args):
-                    # Value provided
                     val = self.visit(node.args[i])
                     new_env.define(p_name, val)
                 elif p_default is not None:
-                    # Use Default
                     val = self.visit(p_default)
                     new_env.define(p_name, val)
                 else:
-                    raise Exception(f"Function Error: Missing argument for '{p_name}'")
+                    raise lunite_error(
+                        "Function",
+                        f"Missing argument for '{p_name}'",
+                        node.line,
+                        node.col
+                    )
             
             self.env = new_env
             try:
@@ -1886,7 +2295,12 @@ class Interpreter:
             self.env = prev_env
             return None
         
-        raise Exception(f"Function Error: '{node.name}' is not a function")
+        raise lunite_error(
+            "Function",
+            f"Function Error: '{node.name}' is not a function",
+            node.line,
+            node.col
+        )
 
     def visit_LambdaExpr(self, node):
         return node
@@ -1900,7 +2314,6 @@ class Interpreter:
         if isinstance(target, Identifier):
             type_name = target.token.value
         
-        # Primitive Checks
         if type_name == 'int': return isinstance(val, int) and not isinstance(val, bool)
         if type_name == 'float': return isinstance(val, float)
         if type_name == 'str': return isinstance(val, str) and not isinstance(val, LChar)
@@ -1922,13 +2335,18 @@ class Interpreter:
         members = {'fields': {}, 'methods': {}}
         
         if class_def.superclass:
-            super_node = self.env.get(class_def.superclass)
+            super_node = self.env.get(class_def.superclass, class_def.line, class_def.col)
             if isinstance(super_node, ClassDef):
                 super_members = self._resolve_class_members(super_node)
                 members['fields'].update(super_members['fields'])
                 members['methods'].update(super_members['methods'])
             else:
-                raise Exception(f"Class Error: Superclass {class_def.superclass} is not a valid class")
+                raise lunite_error(
+                    "Class",
+                    f"Superclass {class_def.superclass} is not a valid class",
+                    class_def.line,
+                    class_def.col
+                )
 
         prev_env = self.env
         class_env = Environment(self.global_env)
@@ -1947,29 +2365,35 @@ class Interpreter:
         return members
     
     def visit_NewInstance(self, node):
-        cls_def = self.env.get(node.class_name)
+        cls_def = self.env.get(node.class_name, node.line, node.call)
         if not isinstance(cls_def, ClassDef):
-            raise Exception(f"Class Error: {node.class_name} is not a class")
+            raise lunite_error(
+                "Class",
+                f"'{node.class_name}' is not a class",
+                node.line,
+                node.col
+            )
         
         instance = LuniteInstance(cls_def)
         
-        # Populate instance with all inherited members
         members = self._resolve_class_members(cls_def)
         instance.fields = members['fields']
         instance.methods = members['methods']
         
-        # 3. Call Constructor if it exists
         if 'init' in instance.methods:
             init_method = instance.methods['init']
             
-            # Setup context for init call
             prev_env = self.env
             method_env = Environment(self.global_env)
             method_env.define('this', instance)
             
-            # Arg matching
             if len(node.args) != len(init_method.params):
-                raise Exception(f"Class Error: Constructor expects {len(init_method.params)} args, got {len(node.args)}")
+                raise lunite_error(
+                    "Class",
+                    f"Wrong number of constructor arguments (expected {len(init_method.params)}, got {len(node.args)}",
+                    node.line,
+                    node.col
+                )
 
             for name, arg_node in zip(init_method.params, node.args):
                 method_env.define(name, self.visit(arg_node))
@@ -1978,7 +2402,7 @@ class Interpreter:
             try:
                 self.visit(init_method.body)
             except ReturnException:
-                pass # Constructors return nothing
+                pass
             finally:
                 self.env = prev_env
                 
@@ -1987,14 +2411,29 @@ class Interpreter:
     def visit_MethodCall(self, node):
         obj = self.visit(node.obj)
         if not isinstance(obj, LuniteInstance):
-            raise Exception("Method Error: Method call on non-instance")
+            raise lunite_error(
+                "Method",
+                "Method call on non-instance",
+                node.line,
+                node.col
+            )
 
         method = obj.methods.get(node.method_name)
         if not method:
-             field = obj.fields.get(node.method_name)
-             if field and callable(field):
-                 raise Exception(f"Method Error: Property '{node.method_name}' is not a method (Lambdas not fully supported yet)")
-             raise Exception(f"Method Error: Method '{node.method_name}' not found on instance")
+            field = obj.fields.get(node.method_name)
+            if field and callable(field):
+                raise lunite_error(
+                    "Method",
+                    f"Property '{node.method_name}' is not a method",
+                    node.line,
+                    node.col
+                )
+            raise lunite_error(
+                "Method",
+                f"Method '{node.method_name}' not found on instance",
+                node.line,
+                node.col
+            )
 
         prev_env = self.env
         method_env = Environment(self.global_env)
@@ -2015,8 +2454,13 @@ class Interpreter:
     def visit_MemberAccess(self, node):
         obj = self.visit(node.obj)
         if isinstance(obj, LuniteInstance):
-            return obj.get(node.member_name)
-        raise Exception("Member Error: Member access on non-instance")
+            return obj.get(node.member_name, node.line, node.col)
+        raise lunite_error(
+            "Member",
+            "Member access on non-instance",
+            node.line,
+            node.col
+        )
 
     def visit_IndexAccess(self, node):
         target = self.visit(node.target)
@@ -2024,14 +2468,61 @@ class Interpreter:
         try:
             return target[index]
         except Exception:
-            raise Exception("Index Error: Index out of bounds or invalid target")
+            raise lunite_error(
+                "Index",
+                f"Index out of bounds or invalid target",
+                node.line,
+                node.col
+            )
         
     def visit_ImportPyStatement(self, node):
         try:
-            mod = importlib.import_module(node.module_name)
-            self.env.define(node.alias, mod)
-        except ImportError:
-            raise Exception(f"Runtime Error: Python module '{node.module_name}' not found")
+            if node.source_package:
+                if os.path.sep in node.source_package or '/' in node.source_package or node.source_package.startswith('.'):
+                    pkg_path = os.path.abspath(node.source_package)
+                    pkg_dir = os.path.dirname(pkg_path)
+                    pkg_name = os.path.basename(pkg_path)
+                    
+                    if os.path.isdir(pkg_path):
+                        sys.path.insert(0, pkg_path)
+                        mod = importlib.import_module(node.source_package)
+                    else:
+                        sys.path.insert(0, pkg_dir)
+                        if pkg_name.endswith('.py'): pkg_name = pkg_name[:-3]
+                        mod = importlib.import_module(pkg_name)
+                else:
+                    mod = importlib.import_module(node.source_package)
+                
+                val = getattr(mod, node.module_name)
+                self.env.define(node.alias, val)
+                
+            else:
+                target_name = node.module_name
+                
+                if os.path.sep in target_name or '/' in target_name or target_name.startswith('.'):
+                    abs_path = os.path.abspath(target_name)
+                    directory = os.path.dirname(abs_path)
+                    filename = os.path.basename(abs_path)
+                    
+                    if filename.endswith('.py'):
+                        module_name_stripped = filename[:-3]
+                    else:
+                        module_name_stripped = filename
+                        
+                    sys.path.insert(0, directory)
+                    mod = importlib.import_module(module_name_stripped)
+                    self.env.define(module_name_stripped, mod)
+                    
+                else:
+                    mod = importlib.import_module(target_name)
+                    self.env.define(node.alias, mod)
+
+        except ImportError as e:
+            raise lunite_error("Import", f"Python module import failed: {str(e)}", node.line, node.col)
+        except AttributeError as e:
+            raise lunite_error("Import", f"Python module attribute error: {str(e)}", node.line, node.col)
+        except Exception as e:
+            raise lunite_error("Import", f"Python module integration error: {str(e)}", node.line, node.col)
 
     def visit_SetLiteral(self, node):
         elements = [self.visit(e) for e in node.elements]
@@ -2051,9 +2542,19 @@ class Interpreter:
     def visit_DestructuringDecl(self, node):
         val = self.visit(node.value)
         if not hasattr(val, '__getitem__') or not hasattr(val, '__len__'):
-             raise Exception("Destructuring Error: Value is not iterable (must be List, Tuple, or String)")
+            raise lunite_error(
+                "Destructuring",
+                "Value is not iterable",
+                node.line,
+                node.col
+            )
         if len(val) < len(node.names):
-             raise Exception(f"Destructuring Error: Not enough values to unpack (expected {len(node.names)}, got {len(val)})")
+            raise lunite_error(
+                "Destructuring",
+                f"Not enough values to unpack (expected {len(node.names)}, got {len(val)})",
+                node.line,
+                node.col
+            )
         for i, name in enumerate(node.names):
             self.env.define(name, val[i], is_const=node.is_const)
         return val
@@ -2062,66 +2563,55 @@ class Interpreter:
 # CLI & BUILDER
 # ==========================================
 
-def start_repl():
-    print(f"Lunite {LUNITE_VERSION_STR} REPL CLI")
-    print(f"{COPYRIGHT}")
-    print("Run Lunite code line-by-line.")
-    print("Type 'exit' or 'quit' to quit.")
-    print("-" * 30)
+def run_code(source):
+    try:
+        lexer = Lexer(source)
+        tokens = []
+        while True:
+            tok = lexer.get_next_token()
+            tokens.append(tok)
+            if tok.type == TOKEN_EOF: break
+        
+        parser = Parser(tokens)
+        ast = parser.parse()
+        interpreter = Interpreter()
+        interpreter.visit(ast)
 
-    interpreter = Interpreter()
+    except (LeapException, BreakException, AdvanceException, ReturnException) as e:
+        print(f"{Fore.RED}Runtime Error: Control flow error ({type(e).__name__}){Style.RESET_ALL}")
+    except Exception as e:
+        print(str(e))
+
+# [RUNTIME BINDED CODE END]
+
+def start_repl():
+    global CURRENT_FILE
+    CURRENT_FILE = "REPL"
+    print(f"{Fore.CYAN}Lunite {LUNITE_VERSION_STR} REPL CLI{Style.RESET_ALL}")
+    print(f"{Fore.YELLOW}{COPYRIGHT}{Style.RESET_ALL}")
     
+    interpreter = Interpreter()
     while True:
         try:
-            text = input("lunite> ")
-            if text.strip() == "": continue
+            text = input(f"{Fore.GREEN}lunite>{Style.RESET_ALL} ")
             if text.strip() in ["exit", "quit"]: break
+            if not text.strip(): continue
             
             lexer = Lexer(text)
             tokens = []
             while True:
-                tok = lexer.get_next_token()
-                tokens.append(tok)
-                if tok.type == TOKEN_EOF: break
+                t = lexer.get_next_token()
+                tokens.append(t)
+                if t.type == TOKEN_EOF: break
             
-            parser = Parser(tokens)
-            ast = parser.parse() 
-            
+            ast = Parser(tokens).parse()
             if isinstance(ast, Block):
                 for stmt in ast.statements:
                     res = interpreter.visit(stmt)
                     if res is not None:
                         print(interpreter.global_env.values.get('str')(res))
-            
         except Exception as e:
-            print(f"Error: {e}")
-
-def run_code(source):
-    lexer = Lexer(source)
-    tokens = []
-    while True:
-        tok = lexer.get_next_token()
-        tokens.append(tok)
-        if tok.type == TOKEN_EOF:
-            break
-    
-    parser = Parser(tokens)
-    try:
-        ast = parser.parse()
-        interpreter = Interpreter()
-        interpreter.visit(ast)
-    except LeapException as e:
-        print(f"Runtime Error: Jump target '{e.target}' not found (or jump out of scope).")
-    except BreakException:
-        print("Runtime Error: 'break' outside of loop.")
-    except AdvanceException:
-        print("Runtime Error: 'advance' outside of loop.")
-    except ReturnException:
-        print("Runtime Error: 'return' outside of function.")
-    except Exception as e:
-        print(f"Lunite Error: {e}")
-
-# [RUNTIME BINDED CODE END]
+            print(str(e))
 
 def compile_code(filename):
     with open(filename, 'r') as f:
@@ -2178,6 +2668,8 @@ def clean_build():
         print(f"Clean error: {e}")
 
 def main():
+    global CURRENT_FILE
+
     if len(sys.argv) < 2:
         start_repl()
         return
@@ -2193,6 +2685,7 @@ def main():
             print("Run failed: File not provided.")
             return
         path = sys.argv[2]
+        CURRENT_FILE = os.path.abspath(path)
         if os.path.exists(path):
             with open(path, 'r') as f:
                 run_code(f.read())
@@ -2208,8 +2701,7 @@ def main():
         print(LUNITE_VERSION_STR)
         print(COPYRIGHT)
         print("-------------------------------")
-        print("WARNING: Building is a WIP feature, might not work as intended.")
-        print("         Executable will be placed in './dist' after build by PyInstaller.")
+        print("WARNING: Executable will be placed in './dist' after build by PyInstaller.")
         print("         Building can overwrite files in './build' and './dist'.")
         cnt_build = input("Continue with build? [Y/N]: ")
         if cnt_build.lower().startswith('y'):
@@ -2217,6 +2709,7 @@ def main():
                 print("Build failed: File not provided.")
                 return
             print("-------------------------------")
+            CURRENT_FILE = os.path.abspath(sys.argv[2])
             compile_code(sys.argv[2])
         elif cnt_build.lower().startswith('n'):
             print("Build failed: Aborted by user.")
