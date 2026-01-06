@@ -455,6 +455,19 @@ out(f"5 squared is {5 * 5}")
 
 ---
 
+## 12. Error Diagnostics
+
+Lunite provides modern, colored, and location-aware error messages. Every error message reports:
+
+*   Error category (clearly labeled)
+*   Source file name
+*   Exact line and column number
+
+Example output screenshot:
+![alt text](error-screenshot.png)
+
+This makes debugging significantly easier, especially for larger projects.
+
 # Thank you!
 
 > "That is the end of what we can say briefly. To understand the language better, you can try to read the source code or try to make your own programs. Thanks!" - ANW, creator of Lunite.
