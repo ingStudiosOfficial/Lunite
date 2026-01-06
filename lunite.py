@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # /== == == == == == == == == == ==\
-# |==  LUNITE - v1.8.4 - by ANW  ==|
+# |==  LUNITE - v1.8.6 - by ANW  ==|
 # \== == == == == == == == == == ==/
 
 import sys
@@ -30,9 +30,9 @@ except ImportError:
 # VERSION & CONFIG
 # ==========================================
 
-LUNITE_VERSION_STR = "v1.8.4"
+LUNITE_VERSION_STR = "v1.8.6"
 COPYRIGHT          = "Copyright ANW, 2025-2026"
-LUNITE_USER_AGENT  = "Lunite/1.8.4"
+LUNITE_USER_AGENT  = "Lunite/1.8.6"
 CURRENT_FILE       = "REPL"
 
 # ==========================================
@@ -758,13 +758,13 @@ class Parser:
             pattern = r'\{([^}]+)\}'
             parts = re.split(pattern, token.value)
             
-            root = String(Token(TOKEN_STRING, "", token.line))
+            root = String(Token(TOKEN_STRING, "", token.line, token.col))
             
             for i, part in enumerate(parts):
                 if i % 2 == 0:
                     if part:
-                        lit = String(Token(TOKEN_STRING, part, token.line))
-                        root = BinaryOp(root, Token(TOKEN_PLUS, '+', token.line), lit)
+                        lit = String(Token(TOKEN_STRING, part, token.line, token.col))
+                        root = BinaryOp(root, Token(TOKEN_PLUS, '+', token.line, token.col), lit)
                 else:
                     sub_lexer = Lexer(part)
                     sub_tokens = []
@@ -777,12 +777,12 @@ class Parser:
                     sub_expr = sub_parser.expr()
                     
                     str_call = FunctionCall('str', [sub_expr])
-                    root = BinaryOp(root, Token(TOKEN_PLUS, '+', token.line), str_call)
+                    root = BinaryOp(root, Token(TOKEN_PLUS, '+', token.line, token.col), str_call)
             
             root.line = token.line
             root.col = token.col
             return root
-
+        
         elif token.type == TOKEN_STRING:
             self.eat(TOKEN_STRING)
             node = String(token)

@@ -3,7 +3,7 @@
 # The Lunite Programming Language
 © Lunite by ANW (Subhrajit Sain), 2025-2026
 
-**Version:** v1.8.5  
+**Version:** v1.8.6  
 **Language update date:** 6th January, 2026  
 **Documentation update date:** 6th January, 2026
 
