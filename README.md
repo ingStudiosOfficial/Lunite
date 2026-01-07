@@ -3,21 +3,13 @@
 # The Lunite Programming Language
 © Lunite by ANW (Subhrajit Sain), 2025-2026
 
-**Version:** v1.8.6  
-**Language update date:** 6th January, 2026  
-**Documentation update date:** 6th January, 2026
+**Version:** v1.8.7  
+**Language update date:** 7th January, 2026  
+**Documentation update date:** 7th January, 2026
 
-Lunite is an interpreted and compiled (more like 'binded') hybrid language (OOP + POP) built with/on Python.
+Lunite is an interpreted and compiled (more like 'binded') hybrid language (OOP + POP) built with/on Python.  
 
----
-
-## Live Star History
-
-<picture>
-   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=SubhrajitSain/Lunite&type=date&theme=dark&legend=bottom-right" />
-   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=SubhrajitSain/Lunite&type=date&legend=bottom-right" />
-   <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=SubhrajitSain/Lunite&type=date&legend=bottom-right" />
-</picture>
+![Not By AI badge](notbyai.svg)
 
 ---
 
@@ -144,8 +136,8 @@ OR for Apple Silicon:
 sudo mv -v lunite /opt/homebrew/bin/lunite
 ```
 
-### File Extention
-Lunite's file extention is `.luna`.  
+### File Extension
+Lunite's file extension is `.luna`.  
 
 ### Line Terminator/Delimiter
 Lunite does not use any line/statement delimiter like other languages. So, there is nothing like putting a `;` (semicolon) at the end of statements, because there are no line delimiters in this language. To declare a new statement, you simply have to write in a new line. If you do so, you will get: `Syntax Error: Illegal character ';' found at line <line number>`, so please keep that in mind.
@@ -384,36 +376,38 @@ Accessed via the global Regex object.
 ## 8. Modules
 
 ### Import Lunite Modules
-You can split code into multiple files or modules. Note that importing a Lunite file executes it in the current scope (similar to C includes), so defined functions become available directly:
 
-`utils.luna`:
+You can split code into multiple files or modules. Note that importing a Lunite file loads it as an object (namespace).
+
+`utils.luna`:  
 ```javascript
 func help() {
     out("Helping...")
 }
 ```
 
-`mylib/hello.luna`:
+`mylib/hello.luna`:  
 ```javascript
 func hello() {
     out("Hello, Lunite!")
 }
 ```
 
-`main.luna`:
+`main.luna`:  
 ```javascript
-import "utils"              ~~ or import utils
-import "./mylib/hello.luna" ~~ or import hello from mylib or import "hello" from "mylib"
+import "utils"              ~~ Creates an object 'utils'
+import "./mylib/hello.luna" ~~ Creates an object 'hello'
 
-help()  ~~ Accessed directly, not via 'utils.help()'
-hello()
+utils.help()                ~~ Access functions via object
+hello.hello()
 ```
 
-### Import Python Modules
-You can also import Python modules using `import_py`. Example:
+### Import Python Modules  
+
+You can also import Python modules using import_py. Example:
 ```javascript
-import_py "math"         ~~ or import_py math
-import_py sqrt from math
+import_py "math"         ~~ Creates a 'math' object
+import_py sqrt from math ~~ Imports 'sqrt' directly
 
 out("Value of Pi: " + str(math.pi))
 out("Square root of 16: " + str(sqrt(16)))
