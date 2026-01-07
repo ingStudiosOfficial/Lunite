@@ -35,6 +35,10 @@
       "patterns": [
         {
           "name": "constant.character.escape.luna",
+          "match": "\\\\(u[0-9a-fA-F]{4}|[nrtbh0\\\\'\"])"
+        },
+        {
+          "name": "constant.character.escape.luna",
           "match": "\\{[^}]+\\}"
         }
       ]
@@ -46,12 +50,22 @@
           "begin": "\"",
           "end": "\"",
           "patterns": [
-            { "name": "constant.character.escape.luna", "match": "\\\\." }
+            { 
+              "name": "constant.character.escape.luna", 
+              "match": "\\\\(u[0-9a-fA-F]{4}|[nrtbh0\\\\'\"])" 
+            }
           ]
         },
         {
           "name": "string.quoted.single.luna",
-          "match": "'[^']'"
+          "begin": "'",
+          "end": "'",
+          "patterns": [
+            { 
+              "name": "constant.character.escape.luna", 
+              "match": "\\\\(u[0-9a-fA-F]{4}|[nrtbh0\\\\'\"])" 
+            }
+          ]
         }
       ]
     },
@@ -102,7 +116,7 @@
           }
         },
         {
-          "match": "\\b(new)\\s+([a-zA-Z_]\\w*)",
+          "match": "\\b(new)\\s+([a-zA-Z_][\\w\\.]*)",
           "captures": {
             "1": { "name": "keyword.operator.new.luna" },
             "2": { "name": "entity.name.type.class.luna" }
@@ -114,7 +128,7 @@
       "patterns": [
         {
           "name": "keyword.control.luna",
-          "match": "\\b(if|else|while|for|in|return|break|advance|leap|attempt|rescue|match|other|import|import_py)\\b"
+          "match": "\\b(if|else|while|for|in|return|break|advance|leap|attempt|rescue|match|other|import|import_py|from)\\b"
         },
         {
           "name": "variable.language.this.luna",
