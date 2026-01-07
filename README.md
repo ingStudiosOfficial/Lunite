@@ -11,16 +11,6 @@ Lunite is an interpreted and compiled (more like 'binded') hybrid language (OOP 
 
 ---
 
-## Live Star History
-
-<picture>
-   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=SubhrajitSain/Lunite&type=date&theme=dark&legend=bottom-right" />
-   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=SubhrajitSain/Lunite&type=date&legend=bottom-right" />
-   <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=SubhrajitSain/Lunite&type=date&legend=bottom-right" />
-</picture>
-
----
-
 ## How to Build Lunite Executable  
 To build Lunite, run either `build.sh` (Linux or MacOS) or `build.bat` (Windows). Make sure you have Python installed along with `pip3`.
 
