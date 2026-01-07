@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # /== == == == == == == == == == ==\
-# |==  LUNITE - v1.8.6 - by ANW  ==|
+# |==  LUNITE - v1.8.7 - by ANW  ==|
 # \== == == == == == == == == == ==/
 
 import sys
@@ -30,9 +30,9 @@ except ImportError:
 # VERSION & CONFIG
 # ==========================================
 
-LUNITE_VERSION_STR = "v1.8.6"
+LUNITE_VERSION_STR = "v1.8.7"
 COPYRIGHT          = "Copyright ANW, 2025-2026"
-LUNITE_USER_AGENT  = "Lunite/1.8.6"
+LUNITE_USER_AGENT  = "Lunite/1.8.7"
 CURRENT_FILE       = "REPL"
 
 # ==========================================
@@ -180,15 +180,12 @@ class Lexer:
 
     def skip_whitespace(self):
         while self.current_char is not None and self.current_char.isspace():
-            if self.current_char == '\n':
-                self.line += 1
             self.advance()
 
     def skip_comment(self):
         while self.current_char is not None and self.current_char != '\n':
             self.advance()
         self.advance()
-        self.line += 1
 
     def skip_multiline_comment(self):
         while self.current_char is not None:
@@ -196,10 +193,8 @@ class Lexer:
                 self.advance()
                 self.advance()
                 break
-            if self.current_char == '\n':
-                self.line += 1
             self.advance()
-
+    
     def make_identifier(self):
         start_col = self.col
         id_str = ''
@@ -651,7 +646,7 @@ class VarDecl(AST):
 
 @dataclass
 class NewInstance(AST):
-    class_name: str
+    class_expr: AST
     args: List[AST]
 
 @dataclass
@@ -864,15 +859,35 @@ class Parser:
 
         elif token.type == TOKEN_KEYWORD and token.value == 'new':
             self.eat(TOKEN_KEYWORD)
-            class_name = self.current_token.value
+            
+            if self.current_token.type != TOKEN_ID:
+                 raise lunite_error("Syntax", "Expected class name after 'new'", self.current_token.line, self.current_token.col)
+            
+            node = Identifier(self.current_token)
+            node.line = self.current_token.line
+            node.col = self.current_token.col
             self.eat(TOKEN_ID)
+            
+            while self.current_token.type == TOKEN_DOT:
+                self.eat(TOKEN_DOT)
+                if self.current_token.type != TOKEN_ID:
+                    raise lunite_error("Syntax", "Expected identifier after dot", self.current_token.line, self.current_token.col)
+                member_name = self.current_token.value
+                
+                prev_node = node
+                node = MemberAccess(prev_node, member_name)
+                node.line = prev_node.line
+                node.col = prev_node.col
+                self.eat(TOKEN_ID)
+
             self.eat(TOKEN_LPAREN)
             args = self.parse_args()
             self.eat(TOKEN_RPAREN)
-            node = NewInstance(class_name, args)
-            node.line = token.line
-            node.col = token.col
-            return node
+            
+            result_node = NewInstance(node, args)
+            result_node.line = token.line
+            result_node.col = token.col
+            return result_node
         
         elif token.type == TOKEN_KEYWORD and token.value == 'in':
             self.eat(TOKEN_KEYWORD)
@@ -1505,7 +1520,7 @@ class Parser:
                 node = Assign(expr_node, val)
                 node.line = token.line
                 node.col = token.col
-                return token
+                return node
             
             elif self.current_token.type in (TOKEN_PLUSEQ, TOKEN_MINUSEQ, TOKEN_MULEQ, TOKEN_DIVEQ, TOKEN_MODEQ):
                 op = self.current_token
@@ -1514,7 +1529,7 @@ class Parser:
                 node = CompoundAssign(expr_node, op, val)
                 node.line = token.line
                 node.col = token.col
-                return token
+                return node
                 
             return expr_node
     
@@ -1625,7 +1640,7 @@ class Interpreter:
         self.global_env = Environment()
         self.setup_std_lib()
         self.env = self.global_env
-        self.imported_files = imported_files if imported_files else set()
+        self.imported_files = imported_files if imported_files else {}
 
     def setup_std_lib(self):
         def clean_str(val):
@@ -1859,6 +1874,9 @@ class Interpreter:
             return method(node)
         except Exception as e:
             if hasattr(e, "has_location") and e.has_location:
+                raise e
+            
+            if isinstance(e, (ReturnException, BreakException, AdvanceException, LeapException)):
                 raise e
 
             err = lunite_error(
@@ -2183,54 +2201,86 @@ class Interpreter:
                 self.env = prev_env
 
     def visit_ImportStatement(self, node):
+        ctx_dir = os.path.dirname(os.path.abspath(CURRENT_FILE)) if CURRENT_FILE != "REPL" else os.getcwd()
         target_file = ""
-        
+
         if node.source_package:
             base_dir = node.source_package
             mod_name = node.module_name
             if not mod_name.endswith('.luna'): mod_name += '.luna'
             target_file = os.path.join(base_dir, mod_name)
-            
-        elif os.path.sep in node.module_name or '/' in node.module_name:
-             target_file = node.module_name
+        elif node.module_name.startswith('.'):
+             target_file = os.path.join(ctx_dir, node.module_name)
              if not target_file.endswith('.luna'): target_file += '.luna'
-             
         else:
             target_file = node.module_name
             if not target_file.endswith('.luna'): target_file += '.luna'
         
         target_file = os.path.normpath(target_file)
         
-        if target_file in self.imported_files:
-            return 
-        
         if not os.path.exists(target_file):
-             raise lunite_error("Import", f"Module '{target_file}' not found", node.line, node.col)
-        
+             if os.path.exists(node.module_name + ".luna"):
+                 target_file = os.path.abspath(node.module_name + ".luna")
+             else:
+                 raise lunite_error("Import", f"Module '{node.module_name}' not found", node.line, node.col)
+
+        if target_file in self.imported_files:
+            module_obj = self.imported_files[target_file]
+            alias = os.path.splitext(os.path.basename(node.module_name))[0]
+            self.env.define(alias, module_obj)
+            return 
+
         try:
             with open(target_file, 'r') as f:
                 code = f.read()
         except Exception as e:
-            raise lunite_error("Import", f"Failed to read '{target_file}': {str(e)}", node.line, node.col)
-        
-        self.imported_files.add(target_file)
-        
-        lexer = Lexer(code)
-        tokens = []
-        while True:
-            t = lexer.get_next_token()
-            tokens.append(t)
-            if t.type == TOKEN_EOF: break
-        
-        parser = Parser(tokens)
-        ast = parser.parse()
-        self.visit(ast)
+            raise lunite_error("Import", f"Failed to read file: {str(e)}", node.line, node.col)
 
+        module_env = Environment(self.global_env)
+        
+        old_env = self.env
+        old_file = globals()['CURRENT_FILE']
+        
+        self.env = module_env
+        globals()['CURRENT_FILE'] = target_file
+        
+        try:
+            lexer = Lexer(code)
+            tokens = []
+            while True:
+                t = lexer.get_next_token()
+                tokens.append(t)
+                if t.type == TOKEN_EOF: break
+            
+            parser = Parser(tokens)
+            ast = parser.parse()
+            self.visit(ast)
+        finally:
+            self.env = old_env
+            globals()['CURRENT_FILE'] = old_file
+
+        alias = os.path.splitext(os.path.basename(node.module_name))[0]
+        
+        module_def = ClassDef(alias, Block([]), None)
+        module_obj = LuniteInstance(module_def)
+        
+        for name, value in module_env.values.items():
+            module_obj.fields[name] = value
+            
+        self.imported_files[target_file] = module_obj
+        self.env.define(alias, module_obj)
+    
     def visit_FunctionDef(self, node):
+        node.source_file = CURRENT_FILE
         self.env.define(node.name, node)
         return node
 
     def visit_ClassDef(self, node):
+        node.source_file = CURRENT_FILE
+        for stmt in node.body.statements:
+            if isinstance(stmt, FunctionDef):
+                stmt.source_file = CURRENT_FILE
+        
         self.env.define(node.name, node)
         return node
 
@@ -2245,12 +2295,7 @@ class Interpreter:
                 args = [self.visit(arg) for arg in node.args]
                 return func(*args)
             except Exception as e:
-                raise lunite_error(
-                    "Function",
-                    str(e),
-                    node.line,
-                    node.col
-                )
+                raise lunite_error("Function", str(e), node.line, node.col)
         
         if isinstance(func, (FunctionDef, LambdaExpr)):
             prev_env = self.env
@@ -2261,12 +2306,7 @@ class Interpreter:
                 f_params = [(p, None) for p in f_params]
 
             if len(node.args) > len(f_params):
-                raise lunite_error(
-                    "Function",
-                    f"Too many arguments (expected {len(f_params)}, got {len(node.args)})",
-                    node.line,
-                    node.col
-                )
+                raise lunite_error("Function", f"Too many arguments", node.line, node.col)
 
             for i, (p_name, p_default) in enumerate(f_params):
                 if i < len(node.args):
@@ -2276,13 +2316,12 @@ class Interpreter:
                     val = self.visit(p_default)
                     new_env.define(p_name, val)
                 else:
-                    raise lunite_error(
-                        "Function",
-                        f"Missing argument for '{p_name}'",
-                        node.line,
-                        node.col
-                    )
+                    raise lunite_error("Function", f"Missing argument for '{p_name}'", node.line, node.col)
             
+            old_file = globals()['CURRENT_FILE']
+            if hasattr(func, 'source_file'):
+                globals()['CURRENT_FILE'] = func.source_file
+
             self.env = new_env
             try:
                 if isinstance(func.body, Block):
@@ -2290,17 +2329,13 @@ class Interpreter:
                 else:
                     return self.visit(func.body)
             except ReturnException as e:
-                self.env = prev_env
                 return e.value
-            self.env = prev_env
+            finally:
+                self.env = prev_env
+                globals()['CURRENT_FILE'] = old_file
             return None
         
-        raise lunite_error(
-            "Function",
-            f"Function Error: '{node.name}' is not a function",
-            node.line,
-            node.col
-        )
+        raise lunite_error("Function", f"'{node.name}' is not a function", node.line, node.col)
 
     def visit_LambdaExpr(self, node):
         return node
@@ -2365,11 +2400,16 @@ class Interpreter:
         return members
     
     def visit_NewInstance(self, node):
-        cls_def = self.env.get(node.class_name, node.line, node.call)
+        cls_def = self.visit(node.class_expr)
+        
         if not isinstance(cls_def, ClassDef):
+            name_hint = "Expression"
+            if isinstance(node.class_expr, Identifier): name_hint = node.class_expr.token.value
+            elif isinstance(node.class_expr, MemberAccess): name_hint = node.class_expr.member_name
+            
             raise lunite_error(
                 "Class",
-                f"'{node.class_name}' is not a class",
+                f"'{name_hint}' is not a class (got {type(cls_def).__name__})",
                 node.line,
                 node.col
             )
@@ -2390,7 +2430,7 @@ class Interpreter:
             if len(node.args) != len(init_method.params):
                 raise lunite_error(
                     "Class",
-                    f"Wrong number of constructor arguments (expected {len(init_method.params)}, got {len(node.args)}",
+                    f"Wrong number of constructor arguments (expected {len(init_method.params)}, got {len(node.args)})",
                     node.line,
                     node.col
                 )
@@ -2407,57 +2447,83 @@ class Interpreter:
                 self.env = prev_env
                 
         return instance
-
+    
     def visit_MethodCall(self, node):
         obj = self.visit(node.obj)
-        if not isinstance(obj, LuniteInstance):
-            raise lunite_error(
-                "Method",
-                "Method call on non-instance",
-                node.line,
-                node.col
-            )
-
-        method = obj.methods.get(node.method_name)
-        if not method:
-            field = obj.fields.get(node.method_name)
-            if field and callable(field):
-                raise lunite_error(
-                    "Method",
-                    f"Property '{node.method_name}' is not a method",
-                    node.line,
-                    node.col
-                )
-            raise lunite_error(
-                "Method",
-                f"Method '{node.method_name}' not found on instance",
-                node.line,
-                node.col
-            )
-
-        prev_env = self.env
-        method_env = Environment(self.global_env)
-        method_env.define('this', obj)
         
-        for name, arg_node in zip(method.params, node.args):
-            method_env.define(name, self.visit(arg_node))
+        if isinstance(obj, LuniteInstance):
+            method = obj.methods.get(node.method_name)
+            if not method:
+                field = obj.fields.get(node.method_name)
+                if field and callable(field):
+                    try:
+                        args = [self.visit(arg) for arg in node.args]
+                        return field(*args)
+                    except Exception as e:
+                         raise lunite_error("Method", str(e), node.line, node.col)
+                
+                raise lunite_error("Method", f"Method '{node.method_name}' not found", node.line, node.col)
 
-        self.env = method_env
-        try:
-            self.visit(method.body)
-        except ReturnException as e:
-            self.env = prev_env
-            return e.value
-        self.env = prev_env
-        return None
-    
+            prev_env = self.env
+            method_env = Environment(self.global_env)
+            method_env.define('this', obj)
+            
+            if len(node.args) > len(method.params):
+                 raise lunite_error("Method", f"Too many arguments for '{node.method_name}'", node.line, node.col)
+
+            for i, (p_name, p_default) in enumerate(method.params):
+                if i < len(node.args):
+                    val = self.visit(node.args[i])
+                    method_env.define(p_name, val)
+                elif p_default is not None:
+                    val = self.visit(p_default)
+                    method_env.define(p_name, val)
+                else:
+                    raise lunite_error("Method", f"Missing argument for '{p_name}'", node.line, node.col)
+
+            old_file = globals()['CURRENT_FILE']
+            if hasattr(method, 'source_file'):
+                globals()['CURRENT_FILE'] = method.source_file
+            elif hasattr(obj.mold, 'source_file'):
+                globals()['CURRENT_FILE'] = obj.mold.source_file
+
+            self.env = method_env
+            try:
+                self.visit(method.body)
+            except ReturnException as e:
+                self.env = prev_env
+                return e.value
+            finally:
+                self.env = prev_env
+                globals()['CURRENT_FILE'] = old_file
+            return None
+
+        if hasattr(obj, node.method_name):
+            py_method = getattr(obj, node.method_name)
+            if callable(py_method):
+                try:
+                    args = [self.visit(arg) for arg in node.args]
+                    return py_method(*args)
+                except Exception as e:
+                    raise lunite_error("Interop", str(e), node.line, node.col)
+        
+        raise lunite_error("Method", f"Method '{node.method_name}' not found on '{type(obj).__name__}'", node.line, node.col)
+
     def visit_MemberAccess(self, node):
         obj = self.visit(node.obj)
+        
         if isinstance(obj, LuniteInstance):
             return obj.get(node.member_name, node.line, node.col)
+        
+        try:
+            if hasattr(obj, node.member_name):
+                return getattr(obj, node.member_name)
+        except Exception:
+            pass
+
         raise lunite_error(
             "Member",
-            "Member access on non-instance",
+            f"Property '{node.member_name}' does not exist on type '{type(obj).__name__}'",
             node.line,
             node.col
         )
@@ -2476,31 +2542,19 @@ class Interpreter:
             )
         
     def visit_ImportPyStatement(self, node):
+        ctx_dir = os.path.dirname(os.path.abspath(CURRENT_FILE)) if CURRENT_FILE != "REPL" else os.getcwd()
+        
         try:
             if node.source_package:
-                if os.path.sep in node.source_package or '/' in node.source_package or node.source_package.startswith('.'):
-                    pkg_path = os.path.abspath(node.source_package)
-                    pkg_dir = os.path.dirname(pkg_path)
-                    pkg_name = os.path.basename(pkg_path)
-                    
-                    if os.path.isdir(pkg_path):
-                        sys.path.insert(0, pkg_path)
-                        mod = importlib.import_module(node.source_package)
-                    else:
-                        sys.path.insert(0, pkg_dir)
-                        if pkg_name.endswith('.py'): pkg_name = pkg_name[:-3]
-                        mod = importlib.import_module(pkg_name)
-                else:
-                    mod = importlib.import_module(node.source_package)
-                
+                mod = importlib.import_module(node.source_package)
                 val = getattr(mod, node.module_name)
                 self.env.define(node.alias, val)
                 
             else:
                 target_name = node.module_name
                 
-                if os.path.sep in target_name or '/' in target_name or target_name.startswith('.'):
-                    abs_path = os.path.abspath(target_name)
+                if target_name.startswith('.'):
+                    abs_path = os.path.abspath(os.path.join(ctx_dir, target_name))
                     directory = os.path.dirname(abs_path)
                     filename = os.path.basename(abs_path)
                     
@@ -2511,7 +2565,7 @@ class Interpreter:
                         
                     sys.path.insert(0, directory)
                     mod = importlib.import_module(module_name_stripped)
-                    self.env.define(module_name_stripped, mod)
+                    self.env.define(node.alias, mod)
                     
                 else:
                     mod = importlib.import_module(target_name)
@@ -2523,7 +2577,7 @@ class Interpreter:
             raise lunite_error("Import", f"Python module attribute error: {str(e)}", node.line, node.col)
         except Exception as e:
             raise lunite_error("Import", f"Python module integration error: {str(e)}", node.line, node.col)
-
+    
     def visit_SetLiteral(self, node):
         elements = [self.visit(e) for e in node.elements]
         return set(elements)
