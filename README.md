@@ -7,7 +7,9 @@
 **Language update date:** 7th January, 2026  
 **Documentation update date:** 7th January, 2026
 
-Lunite is an interpreted and compiled (more like 'binded') hybrid language (OOP + POP) built with/on Python.
+Lunite is an interpreted and compiled (more like 'binded') hybrid language (OOP + POP) built with/on Python.  
+
+![Not By AI badge](notbyai.svg)
 
 ---
 
