@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # /== == == == == == == == == == ==\
-# |==  LUNITE - v1.8.7 - by ANW  ==|
+# |==  LUNITE - v1.8.8 - by ANW  ==|
 # \== == == == == == == == == == ==/
 
 import sys
@@ -30,9 +30,9 @@ except ImportError:
 # VERSION & CONFIG
 # ==========================================
 
-LUNITE_VERSION_STR = "v1.8.7"
+LUNITE_VERSION_STR = "v1.8.8"
 COPYRIGHT          = "Copyright ANW, 2025-2026"
-LUNITE_USER_AGENT  = "Lunite/1.8.7"
+LUNITE_USER_AGENT  = "Lunite/1.8.8"
 CURRENT_FILE       = "REPL"
 
 # ==========================================
@@ -50,6 +50,26 @@ def lunite_error(kind, message, line=None, col=None):
     )
     e.has_location = True
     return e
+
+# ==========================================
+# VENV DETECTION AND PYTHON PATH
+# ==========================================
+
+def get_python_venv():
+    cwd = os.getcwd()
+    venv_names = ["venv", ".venv", "env"]
+    is_win = platform.system() == "Windows"
+    
+    for venv in venv_names:
+        if is_win:
+            path = os.path.join(cwd, venv, "Scripts", "python.exe")
+        else:
+            path = os.path.join(cwd, venv, "bin", "python")
+            
+        if os.path.exists(path):
+            return path
+            
+    return sys.executable
 
 # ==========================================
 # TOKENS LIST
@@ -2699,14 +2719,25 @@ if __name__ == "__main__":
         f.write(loader_code)
     
     print(f"Build: Created intermediate {dist_file}")
+    
+    py_bin = get_preferred_python()
+    if py_bin != sys.executable:
+        print(f"Build: Detected virtual environment. Using: {py_bin}")
+    else:
+        print(f"Build: Venv not detected, using system python: {py_bin}")
+        
     print("Build: Compiling with PyInstaller, this might take some time...")
     
     try:
-        subprocess.check_call([sys.executable, "-m", "PyInstaller", "--onefile", dist_file])
+        subprocess.check_call([py_bin, "-m", "PyInstaller", "--onefile", dist_file])
         print(f"Build: Success! Executable should be in the 'dist' folder.")
     except Exception as e:
         print(f"Build: Compilation failed: {e}")
     finally:
+        if py_bin == sys.executable:
+            print("Tip: If PyInstaller is installed in a venv, try activating it or creating a venv folder named 'venv', '.venv' or 'env'.")
+        else:
+            print("Tip: A venv (in 'venv', '.venv' or 'env' folder) was used to build your executable.")
         if os.path.exists(dist_file):
             os.remove(dist_file)
         if os.path.exists(filename.replace('.luna', '.spec')):
