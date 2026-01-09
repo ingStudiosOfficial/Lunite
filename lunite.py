@@ -2720,7 +2720,7 @@ if __name__ == "__main__":
     
     print(f"Build: Created intermediate {dist_file}")
     
-    py_bin = get_preferred_python()
+    py_bin = get_python_venv()
     if py_bin != sys.executable:
         print(f"Build: Detected virtual environment. Using: {py_bin}")
     else:
