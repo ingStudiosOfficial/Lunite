@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # /== == == == == == == == == == ==\
-# |==  LUNITE - v1.8.8 - by ANW  ==|
+# |==  LUNITE - v1.8.9 - by ANW  ==|
 # \== == == == == == == == == == ==/
 
 import sys
@@ -30,9 +30,9 @@ except ImportError:
 # VERSION & CONFIG
 # ==========================================
 
-LUNITE_VERSION_STR = "v1.8.8"
+LUNITE_VERSION_STR = "v1.8.9"
 COPYRIGHT          = "Copyright ANW, 2025-2026"
-LUNITE_USER_AGENT  = "Lunite/1.8.8"
+LUNITE_USER_AGENT  = "Lunite/1.8.9"
 CURRENT_FILE       = "REPL"
 
 # ==========================================
@@ -128,7 +128,7 @@ TOKEN_IS       = 'IS'
 KEYWORDS = [
     'let', 'func', 'class', 'if', 'else', 'while', 'for', 'in',
     'return', 'new', 'true', 'false', 'null', 'import',
-    'attempt', 'rescue', 'extends', 'break', 'advance', 'leap',
+    'attempt', 'rescue', 'finally', 'extends', 'break', 'advance', 'leap',
     'match', 'other', 'and', 'or', 'not', 'const', 'import_py',
     'enum', 'is', 'from'
 ]
@@ -172,11 +172,11 @@ class Token:
     col: int
 
 class Lexer:
-    def __init__(self, source_code):
+    def __init__(self, source_code, start_line=1, start_col=1):
         self.source = source_code
         self.pos = 0
-        self.line = 1
-        self.col = 1
+        self.line = start_line
+        self.col = start_col
         self.current_char = self.source[0] if self.source else None
 
     def advance(self):
@@ -259,6 +259,7 @@ class Lexer:
 
     def make_string(self):
         start_col = self.col
+        start_line = self.line
         quote = self.current_char
         self.advance()
         s = ''
@@ -271,7 +272,6 @@ class Lexer:
             if self.current_char == '\\':
                 self.advance()
                 
-                # Unicode Hex \uXXXX
                 if self.current_char == 'u':
                     self.advance()
                     hex_str = ''
@@ -305,14 +305,49 @@ class Lexer:
             if len(s) != 1:
                 raise lunite_error(
                     "Syntax",
-                    "Char literal must be length 1",
-                    self.line,
+                    "Char literal with must be length 1.",
+                    start_line,
                     start_col
                 )
-            return Token(TOKEN_CHAR, s, self.line, start_col)
+            return Token(TOKEN_CHAR, s, start_line, start_col)
             
-        return Token(TOKEN_STRING, s, self.line, start_col)
+        return Token(TOKEN_STRING, s, start_line, start_col)
     
+    def make_fstring(self):
+        start_col = self.col
+        start_line = self.line
+        self.advance()
+        self.advance()
+        
+        raw_s = ""
+        brace_depth = 0
+        
+        while self.current_char is not None:
+            char = self.current_char
+            
+            if char == '"' and brace_depth == 0:
+                self.advance() # consume closing quote
+                return Token(TOKEN_FSTRING, raw_s, start_line, start_col)
+            
+            if char == '{':
+                brace_depth += 1
+            elif char == '}':
+                if brace_depth > 0: brace_depth -= 1
+            
+            if char == '\\':
+                # Capture escape sequence raw
+                raw_s += char
+                self.advance()
+                if self.current_char is not None:
+                    raw_s += self.current_char
+                    self.advance()
+                continue
+            
+            raw_s += char
+            self.advance()
+        
+        raise lunite_error("Syntax", "Unterminated f-string", start_line, start_col)
+
     def get_next_token(self):
         while self.current_char is not None:
             start_col = self.col 
@@ -377,11 +412,7 @@ class Lexer:
                 return Token(TOKEN_GT, '>', self.line, start_col)
 
             if self.current_char == 'f' and self.peek() == '"':
-                self.advance()
-                token = self.make_string()
-                token.type = TOKEN_FSTRING
-                token.col = start_col
-                return token
+                return self.make_fstring()
 
             if self.current_char.isalpha() or self.current_char == '_':
                 return self.make_identifier()
@@ -600,6 +631,7 @@ class TryCatchStatement(AST):
     try_block: Block
     error_var: str
     catch_block: Block
+    finally_block: Optional[Block] = None
 
 @dataclass
 class ImportStatement(AST):
@@ -714,19 +746,67 @@ class Parser:
         self.pos = 0
         self.current_token = self.tokens[self.pos]
     
+    def _advance_loc(self, line, col, text):
+        for char in text:
+            if char == '\n':
+                line += 1
+                col = 1
+            else:
+                col += 1
+        return line, col
+
+    def _unescape_fstring_part(self, text, line, col):
+        s = ""
+        i = 0
+        n = len(text)
+        escape_map = {
+            'n': '\n', 't': '\t', 'r': '\r', '\\': '\\', '"': '"', "'": "'",
+            'b': '\b', 'h': '\t', '0': '\0'
+        }
+        
+        while i < n:
+            char = text[i]
+            if char == '\\' and i + 1 < n:
+                next_char = text[i+1]
+                if next_char == 'u':
+                    if i + 5 < n:
+                        try:
+                            hex_str = text[i+2:i+6]
+                            s += chr(int(hex_str, 16))
+                            i += 6
+                            continue
+                        except: pass
+                
+                if next_char in escape_map:
+                    s += escape_map[next_char]
+                    i += 2
+                else:
+                    s += '\\'
+                    i += 1
+            else:
+                s += char
+                i += 1
+        return s
+
     def is_case_start(self):
-        if self.pos + 1 >= len(self.tokens):
+        if self.pos >= len(self.tokens):
+            return False
+            
+        i = self.pos
+        tok = self.tokens[i]
+        
+        valid_start = tok.type in (TOKEN_INT, TOKEN_FLOAT, TOKEN_STRING, TOKEN_CHAR, TOKEN_ID, TOKEN_KEYWORD, TOKEN_LBRACKET, TOKEN_LBRACE)
+        if not valid_start:
             return False
         
-        curr = self.current_token.type
-        next_t = self.tokens[self.pos + 1].type
+        if i + 1 < len(self.tokens) and self.tokens[i+1].type == TOKEN_COLON:
+            return True
+            
+        if tok.type == TOKEN_ID and i + 3 < len(self.tokens):
+            if self.tokens[i+1].type == TOKEN_DOT and self.tokens[i+2].type == TOKEN_ID and self.tokens[i+3].type == TOKEN_COLON:
+                return True
         
-        is_atom = curr in (TOKEN_INT, TOKEN_FLOAT, TOKEN_STRING, TOKEN_CHAR, TOKEN_ID, TOKEN_KEYWORD)
-
-        if self.current_token.type == TOKEN_KEYWORD and self.current_token.value == 'other':
-            return False
-
-        return is_atom and next_t == TOKEN_COLON
+        return False
 
     def eat(self, token_type):
         token = self.current_token
@@ -773,15 +853,32 @@ class Parser:
             pattern = r'\{([^}]+)\}'
             parts = re.split(pattern, token.value)
             
+            curr_line = token.line
+            curr_col = token.col + 2
+            
             root = String(Token(TOKEN_STRING, "", token.line, token.col))
+            root.line = token.line
+            root.col = token.col
             
             for i, part in enumerate(parts):
                 if i % 2 == 0:
                     if part:
-                        lit = String(Token(TOKEN_STRING, part, token.line, token.col))
-                        root = BinaryOp(root, Token(TOKEN_PLUS, '+', token.line, token.col), lit)
+                        unescaped = self._unescape_fstring_part(part, curr_line, curr_col)
+                        lit = String(Token(TOKEN_STRING, unescaped, curr_line, curr_col))
+                        lit.line = curr_line
+                        lit.col = curr_col
+                        
+                        add_op = Token(TOKEN_PLUS, '+', curr_line, curr_col)
+                        root = BinaryOp(root, add_op, lit)
+                        root.line = curr_line
+                        root.col = curr_col
+                    
+                    curr_line, curr_col = self._advance_loc(curr_line, curr_col, part)
+                    
                 else:
-                    sub_lexer = Lexer(part)
+                    curr_line, curr_col = self._advance_loc(curr_line, curr_col, "{")
+                    
+                    sub_lexer = Lexer(part, start_line=curr_line, start_col=curr_col)
                     sub_tokens = []
                     while True:
                         t = sub_lexer.get_next_token()
@@ -792,10 +889,17 @@ class Parser:
                     sub_expr = sub_parser.expr()
                     
                     str_call = FunctionCall('str', [sub_expr])
-                    root = BinaryOp(root, Token(TOKEN_PLUS, '+', token.line, token.col), str_call)
+                    str_call.line = curr_line
+                    str_call.col = curr_col
+                    
+                    add_op = Token(TOKEN_PLUS, '+', curr_line, curr_col)
+                    root = BinaryOp(root, add_op, str_call)
+                    root.line = curr_line
+                    root.col = curr_col
+                    
+                    curr_line, curr_col = self._advance_loc(curr_line, curr_col, part)
+                    curr_line, curr_col = self._advance_loc(curr_line, curr_col, "}")
             
-            root.line = token.line
-            root.col = token.col
             return root
         
         elif token.type == TOKEN_STRING:
@@ -1390,6 +1494,7 @@ class Parser:
             self.eat(TOKEN_LBRACE)
             try_block = self.block()
             self.eat(TOKEN_RBRACE)
+            
             if self.current_token.type == TOKEN_KEYWORD and self.current_token.value == 'rescue':
                 self.eat(TOKEN_KEYWORD)
                 self.eat(TOKEN_LPAREN)
@@ -1399,10 +1504,6 @@ class Parser:
                 self.eat(TOKEN_LBRACE)
                 catch_block = self.block()
                 self.eat(TOKEN_RBRACE)
-                node = TryCatchStatement(try_block, error_var, catch_block)
-                node.line = token.line
-                node.col = token.col
-                return node
             else:
                 raise lunite_error(
                     "Syntax",
@@ -1410,6 +1511,18 @@ class Parser:
                     token.line,
                     token.col
                 )
+            
+            finally_block = None
+            if self.current_token.type == TOKEN_KEYWORD and self.current_token.value == 'finally':
+                self.eat(TOKEN_KEYWORD)
+                self.eat(TOKEN_LBRACE)
+                finally_block = self.block()
+                self.eat(TOKEN_RBRACE)
+            
+            node = TryCatchStatement(try_block, error_var, catch_block, finally_block)
+            node.line = token.line
+            node.col = token.col
+            return node
             
         elif token.type == TOKEN_KEYWORD and token.value == 'enum':
             self.eat(TOKEN_KEYWORD)
@@ -1521,6 +1634,9 @@ class Parser:
                            not self.is_case_start() and 
                            not (self.current_token.type == TOKEN_KEYWORD and self.current_token.value == 'other')):
                         
+                        if self.current_token.type == TOKEN_COLON:
+                            break
+
                         stmts.append(self.parse_statement())
                     
                     cases.append(MatchCase(val, Block(stmts)))
@@ -2219,6 +2335,9 @@ class Interpreter:
                 return self.visit(node.catch_block)
             finally:
                 self.env = prev_env
+        finally:
+            if node.finally_block:
+                self.visit(node.finally_block)
 
     def visit_ImportStatement(self, node):
         ctx_dir = os.path.dirname(os.path.abspath(CURRENT_FILE)) if CURRENT_FILE != "REPL" else os.getcwd()
@@ -2315,6 +2434,8 @@ class Interpreter:
                 args = [self.visit(arg) for arg in node.args]
                 return func(*args)
             except Exception as e:
+                if hasattr(e, "has_location") and e.has_location:
+                    raise e
                 raise lunite_error("Function", str(e), node.line, node.col)
         
         if isinstance(func, (FunctionDef, LambdaExpr)):
@@ -2553,10 +2674,24 @@ class Interpreter:
         index = self.visit(node.index)
         try:
             return target[index]
-        except Exception:
+        except KeyError:
+            raise lunite_error(
+                "Key",
+                f"Key '{index}' not found in dictionary",
+                node.line,
+                node.col
+            )
+        except IndexError:
             raise lunite_error(
                 "Index",
-                f"Index out of bounds or invalid target",
+                f"Index '{index}' out of bounds",
+                node.line,
+                node.col
+            )
+        except Exception as e:
+            raise lunite_error(
+                "Index",
+                f"Invalid access operation: {str(e)}",
                 node.line,
                 node.col
             )

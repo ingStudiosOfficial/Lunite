@@ -3,8 +3,8 @@
 # The Lunite Programming Language
 © Lunite by ANW (Subhrajit Sain), 2025-2026
 
-**Version:** v1.8.8  
-**Language update date:** 9th January, 2026  
+**Version:** v1.8.9  
+**Language update date:** 10th January, 2026  
 **Documentation update date:** 7th January, 2026
 
 Lunite is an interpreted and compiled (more like 'binded') hybrid language (OOP + POP) built with/on Python.  
@@ -261,6 +261,8 @@ attempt {
     let x = 10 / 0             ~~ Try to divide by 0
 } rescue (e) {
     out(f"Error caught: {e}")  ~~ Exception handling
+} finally {
+    out(f"Finished!")          ~~ Final stuff like cleanup, etc.
 }
 ```
 
