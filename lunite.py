@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # /== == == == == == == == == == ==\
-# |==  LUNITE - v1.8.9 - by ANW  ==|
+# |==  LUNITE - v1.9.0 - by ANW  ==|
 # \== == == == == == == == == == ==/
 
 import sys
@@ -30,9 +30,9 @@ except ImportError:
 # VERSION & CONFIG
 # ==========================================
 
-LUNITE_VERSION_STR = "v1.8.9"
+LUNITE_VERSION_STR = "v1.9.0"
 COPYRIGHT          = "Copyright ANW, 2025-2026"
-LUNITE_USER_AGENT  = "Lunite/1.8.9"
+LUNITE_USER_AGENT  = "Lunite/1.9.0"
 CURRENT_FILE       = "REPL"
 
 # ==========================================
@@ -100,6 +100,8 @@ TOKEN_EQ       = 'EQ'
 TOKEN_NEQ      = 'NEQ'
 TOKEN_GT       = 'GT'
 TOKEN_LT       = 'LT'
+TOKEN_GE       = 'GE'
+TOKEN_LE       = 'LE'
 TOKEN_EOF      = 'EOF'
 TOKEN_DOT      = 'DOT'
 TOKEN_QUESTION = 'QUESTION'
@@ -305,7 +307,7 @@ class Lexer:
             if len(s) != 1:
                 raise lunite_error(
                     "Syntax",
-                    "Char literal with must be length 1.",
+                    "Char literal must be length 1.",
                     start_line,
                     start_col
                 )
@@ -402,6 +404,9 @@ class Lexer:
                 if self.current_char == '<':
                     self.advance()
                     return Token(TOKEN_LSHIFT, '<<', self.line, start_col)
+                if self.current_char == '=':
+                    self.advance()
+                    return Token(TOKEN_LE, '<=', self.line, start_col)
                 return Token(TOKEN_LT, '<', self.line, start_col)
 
             if self.current_char == '>':
@@ -409,6 +414,9 @@ class Lexer:
                 if self.current_char == '>':
                     self.advance()
                     return Token(TOKEN_RSHIFT, '>>', self.line, start_col)
+                if self.current_char == '=':
+                    self.advance()
+                    return Token(TOKEN_GE, '>=', self.line, start_col)
                 return Token(TOKEN_GT, '>', self.line, start_col)
 
             if self.current_char == 'f' and self.peek() == '"':
@@ -517,8 +525,8 @@ class Lexer:
             raise lunite_error(
                 "Syntax",
                 f"Illegal character '{self.current_char}",
-                self.current_char.line,
-                self.current_char.col
+                self.line,
+                self.col
             )
 
         return Token(TOKEN_EOF, None, self.line, self.col)
@@ -795,7 +803,7 @@ class Parser:
         i = self.pos
         tok = self.tokens[i]
         
-        valid_start = tok.type in (TOKEN_INT, TOKEN_FLOAT, TOKEN_STRING, TOKEN_CHAR, TOKEN_ID, TOKEN_KEYWORD, TOKEN_LBRACKET, TOKEN_LBRACE)
+        valid_start = tok.type in (TOKEN_INT, TOKEN_FLOAT, TOKEN_STRING, TOKEN_CHAR, TOKEN_ID, TOKEN_KEYWORD, TOKEN_LBRACKET, TOKEN_LBRACE, TOKEN_MINUS)
         if not valid_start:
             return False
         
@@ -850,9 +858,43 @@ class Parser:
         
         elif token.type == TOKEN_FSTRING:
             self.eat(TOKEN_FSTRING)
-            pattern = r'\{([^}]+)\}'
-            parts = re.split(pattern, token.value)
             
+            raw_val = token.value
+            parts = []
+            current_str = ""
+            depth = 0
+            expr_buffer = ""
+            
+            i = 0
+            while i < len(raw_val):
+                char = raw_val[i]
+                
+                if char == '{':
+                    if depth == 0:
+                        if current_str:
+                            parts.append(("str", current_str))
+                            current_str = ""
+                        depth = 1
+                    else:
+                        expr_buffer += char
+                        depth += 1
+                elif char == '}':
+                    depth -= 1
+                    if depth == 0:
+                        parts.append(("expr", expr_buffer))
+                        expr_buffer = ""
+                    else:
+                        expr_buffer += char
+                else:
+                    if depth > 0:
+                        expr_buffer += char
+                    else:
+                        current_str += char
+                i += 1
+            
+            if current_str:
+                parts.append(("str", current_str))
+
             curr_line = token.line
             curr_col = token.col + 2
             
@@ -860,25 +902,22 @@ class Parser:
             root.line = token.line
             root.col = token.col
             
-            for i, part in enumerate(parts):
-                if i % 2 == 0:
-                    if part:
-                        unescaped = self._unescape_fstring_part(part, curr_line, curr_col)
-                        lit = String(Token(TOKEN_STRING, unescaped, curr_line, curr_col))
-                        lit.line = curr_line
-                        lit.col = curr_col
-                        
-                        add_op = Token(TOKEN_PLUS, '+', curr_line, curr_col)
-                        root = BinaryOp(root, add_op, lit)
-                        root.line = curr_line
-                        root.col = curr_col
+            for p_type, p_val in parts:
+                if p_type == "str":
+                    unescaped = self._unescape_fstring_part(p_val, curr_line, curr_col)
+                    lit = String(Token(TOKEN_STRING, unescaped, curr_line, curr_col))
+                    lit.line = curr_line
+                    lit.col = curr_col
                     
-                    curr_line, curr_col = self._advance_loc(curr_line, curr_col, part)
+                    add_op = Token(TOKEN_PLUS, '+', curr_line, curr_col)
+                    root = BinaryOp(root, add_op, lit)
+                    root.line = curr_line
+                    root.col = curr_col
                     
-                else:
-                    curr_line, curr_col = self._advance_loc(curr_line, curr_col, "{")
+                    curr_line, curr_col = self._advance_loc(curr_line, curr_col, p_val)
                     
-                    sub_lexer = Lexer(part, start_line=curr_line, start_col=curr_col)
+                elif p_type == "expr":
+                    sub_lexer = Lexer(p_val, start_line=curr_line, start_col=curr_col + 1)
                     sub_tokens = []
                     while True:
                         t = sub_lexer.get_next_token()
@@ -897,9 +936,8 @@ class Parser:
                     root.line = curr_line
                     root.col = curr_col
                     
-                    curr_line, curr_col = self._advance_loc(curr_line, curr_col, part)
-                    curr_line, curr_col = self._advance_loc(curr_line, curr_col, "}")
-            
+                    curr_line, curr_col = self._advance_loc(curr_line, curr_col, "{" + p_val + "}")
+
             return root
         
         elif token.type == TOKEN_STRING:
@@ -1156,7 +1194,7 @@ class Parser:
     
     def math_expr(self):
         node = self.term()
-        while self.current_token.type in (TOKEN_PLUS, TOKEN_MINUS):
+        while self.current_token.type in (TOKEN_PLUS, TOKEN_MINUS, TOKEN_EQ, TOKEN_NEQ, TOKEN_GT, TOKEN_LT, TOKEN_GE, TOKEN_LE):
             token = self.current_token
             self.eat(token.type)
             node = BinaryOp(left=node, op=token, right=self.term())
@@ -1186,8 +1224,17 @@ class Parser:
     
     def comp_expr(self):
         node = self.bitwise_expr()
-        while self.current_token.type in (TOKEN_EQ, TOKEN_NEQ, TOKEN_GT, TOKEN_LT, TOKEN_IS):
+        while self.current_token.type in (TOKEN_EQ, TOKEN_NEQ, TOKEN_GT, TOKEN_LT, TOKEN_LE, TOKEN_GE, TOKEN_IS, TOKEN_KEYWORD):
             token = self.current_token
+            if token.type == TOKEN_KEYWORD and token.value == 'in':
+                self.eat(TOKEN_KEYWORD)
+                right = self.bitwise_expr()
+                node = BinaryOp(left=node, op=token, right=right) 
+                node.line = token.line
+                node.col = token.col
+                continue
+            if token.type == TOKEN_KEYWORD and token.value != 'in':
+                break
             self.eat(token.type)
             if token.type == TOKEN_IS:
                 target = self.bitwise_expr()
@@ -1198,16 +1245,6 @@ class Parser:
                 node = BinaryOp(left=node, op=token, right=self.bitwise_expr())
                 node.line = token.line
                 node.col = token.col
-        return node
-
-    def arithmetic_expr(self):
-        node = self.term()
-        while self.current_token.type in (TOKEN_PLUS, TOKEN_MINUS, TOKEN_EQ, TOKEN_NEQ, TOKEN_GT, TOKEN_LT):
-            token = self.current_token
-            self.eat(token.type)
-            node = BinaryOp(left=node, op=token, right=self.term())
-            node.line = token.line
-            node.col = token.col
         return node
 
     def logic_expr(self):
@@ -2155,8 +2192,13 @@ class Interpreter:
         # Comparison
         if op == TOKEN_GT: return left > right
         if op == TOKEN_LT: return left < right
+        if op == TOKEN_GE: return left >= right
+        if op == TOKEN_LE: return left <= right
         if op == TOKEN_EQ: return left == right
         if op == TOKEN_NEQ: return left != right
+
+        # in keyword
+        if op.type == TOKEN_KEYWORD and op.value == 'in': return left in right
         
         return None
     
@@ -2253,7 +2295,7 @@ class Interpreter:
                 new_val = val
 
         if isinstance(node.left, Identifier):
-            self.env.assign(node.left.token.value, new_val, node.left.token.line. node.left.token.col)
+            self.env.assign(node.left.token.value, new_val, node.left.token.line, node.left.token.col)
         elif isinstance(node.left, MemberAccess):
             obj.set(node.left.member_name, new_val)
         elif isinstance(node.left, IndexAccess):
@@ -2375,6 +2417,13 @@ class Interpreter:
         except Exception as e:
             raise lunite_error("Import", f"Failed to read file: {str(e)}", node.line, node.col)
 
+        alias = os.path.splitext(os.path.basename(node.module_name))[0]
+        module_def = ClassDef(alias, Block([]), None)
+        module_obj = LuniteInstance(module_def)
+        
+        self.imported_files[target_file] = module_obj
+        self.env.define(alias, module_obj)
+
         module_env = Environment(self.global_env)
         
         old_env = self.env
@@ -2398,11 +2447,6 @@ class Interpreter:
             self.env = old_env
             globals()['CURRENT_FILE'] = old_file
 
-        alias = os.path.splitext(os.path.basename(node.module_name))[0]
-        
-        module_def = ClassDef(alias, Block([]), None)
-        module_obj = LuniteInstance(module_def)
-        
         for name, value in module_env.values.items():
             module_obj.fields[name] = value
             
