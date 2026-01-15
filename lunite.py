@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # /== == == == == == == == == == ==\
-# |==  LUNITE - v1.9.0 - by ANW  ==|
+# |==  LUNITE - v1.9.1 - by ANW  ==|
 # \== == == == == == == == == == ==/
 
 import sys
@@ -30,9 +30,9 @@ except ImportError:
 # VERSION & CONFIG
 # ==========================================
 
-LUNITE_VERSION_STR = "v1.9.0"
+LUNITE_VERSION_STR = "v1.9.1"
 COPYRIGHT          = "Copyright ANW, 2025-2026"
-LUNITE_USER_AGENT  = "Lunite/1.9.0"
+LUNITE_USER_AGENT  = "Lunite/1.9.1"
 CURRENT_FILE       = "REPL"
 
 # ==========================================
@@ -122,6 +122,7 @@ TOKEN_NOT      = 'NOT'
 TOKEN_FSTRING  = 'FSTRING'
 TOKEN_ARROW    = 'ARROW'
 TOKEN_IS       = 'IS'
+TOKEN_SEMI     = 'SEMI'
 
 # ==========================================
 # KEYWORDS LIST
@@ -492,6 +493,10 @@ class Lexer:
             if self.current_char == ':':
                 self.advance()
                 return Token(TOKEN_COLON, ':', self.line, start_col)
+
+            if self.current_char == ';':
+                self.advance()
+                return Token(TOKEN_SEMI, ';', self.line, start_col)
             
             if self.current_char == ',':
                 self.advance()
@@ -829,6 +834,11 @@ class Parser:
                 token.line,
                 token.col
             )
+
+    def peek(self):
+        if self.pos + 1 < len(self.tokens):
+            return self.tokens[self.pos + 1]
+        return self.current_token
     
     def parse_args(self):
         args = []
@@ -1740,7 +1750,14 @@ class Parser:
     def block(self):
         statements = []
         while self.current_token.type != TOKEN_RBRACE and self.current_token.type != TOKEN_EOF:
+            if self.current_token.type == TOKEN_SEMI:
+                self.eat(TOKEN_SEMI)
+                continue
+            
             statements.append(self.parse_statement())
+            if self.current_token.type == TOKEN_SEMI:
+                self.eat(TOKEN_SEMI)
+                
         node = Block(statements)
         node.line = self.current_token.line
         node.col = self.current_token.col
@@ -1749,10 +1766,18 @@ class Parser:
     def parse(self):
         statements = []
         while self.current_token.type != TOKEN_EOF:
+            if self.current_token.type == TOKEN_SEMI:
+                self.eat(TOKEN_SEMI)
+                continue
+
             statements.append(self.parse_statement())
+            if self.current_token.type == TOKEN_SEMI:
+                self.eat(TOKEN_SEMI)
+                
         node = Block(statements)
-        node.line = self.current_token.line
-        node.col = self.current_token.col
+        if statements:
+            node.line = statements[0].line
+            node.col = statements[0].col
         return node
 
 # ==========================================
@@ -1878,169 +1903,259 @@ class Interpreter:
         self.global_env.define('in', lunite_input)
         
         # --- File IO ---
-        def read_file(path):
-            try:
-                with open(path, 'r') as f: return f.read()
-            except Exception as e:
-                raise lunite_error(
-                    "STD LIB FIO Read",
-                    str(e)
-                )
-        
-        def write_file(path, content):
-            try:
-                with open(path, 'w') as f: f.write(clean_str(content))
-            except Exception as e:
-                raise lunite_error(
-                    "STD LIB FIO Write",
-                    str(e)
-                )
-        
-        self.global_env.define('read_file', read_file)
-        self.global_env.define('write_file', write_file)
+        class FileWrapper:
+            @staticmethod
+            def read(path):
+                try:
+                    with open(path, 'r') as f: return f.read()
+                except Exception as e:
+                    raise lunite_error("STD LIB File Read", str(e))
+            
+            @staticmethod
+            def write(path, content):
+                try:
+                    with open(path, 'w') as f: f.write(clean_str(content))
+                except Exception as e:
+                    raise lunite_error("STD LIB File Write", str(e))
+            
+            @staticmethod
+            def read_bytes(path):
+                try:
+                    with open(path, 'rb') as f: return f.read()
+                except Exception as e: return None
+            
+            @staticmethod
+            def write_bytes(path, data):
+                try:
+                    if isinstance(data, str): data = data.encode('utf-8')
+                    with open(path, 'wb') as f: f.write(data)
+                except Exception as e:
+                    raise lunite_error("STD LIB File Write Bytes", str(e))
+            
+            @staticmethod
+            def exists(p): return os.path.exists(str(p))
+            
+            @staticmethod
+            def mkdir(p): os.mkdir(str(p))
+            
+            @staticmethod
+            def rmdir(p): os.rmdir(str(p))
+            
+            @staticmethod
+            def remove(p): os.remove(str(p))
+            
+            @staticmethod
+            def list(p): return os.listdir(str(p))
+            
+            @staticmethod
+            def join(a, b): return os.path.join(str(a), str(b))
+            
+            @staticmethod
+            def cwd(): return os.getcwd()
 
-        # --- File System & Path ---
-        self.global_env.define('mkdir', lambda p: os.mkdir(str(p)))
-        self.global_env.define('rmdir', lambda p: os.rmdir(str(p)))
-        self.global_env.define('remove', lambda p: os.remove(str(p)))
-        self.global_env.define('listdir', lambda p: os.listdir(str(p)))
-        self.global_env.define('exists', lambda p: os.path.exists(str(p)))
-        self.global_env.define('path_join', lambda a, b: os.path.join(str(a), str(b)))
-        self.global_env.define('getcwd', lambda: os.getcwd())
+        file_obj = LuniteInstance(ClassDef("File", Block([]), None))
+        file_wrapper = FileWrapper()
+        file_obj.methods['read'] = lambda p: file_wrapper.read(p)
+        file_obj.methods['write'] = lambda p, c: file_wrapper.write(p, c)
+        file_obj.methods['read_bytes'] = lambda p: file_wrapper.read_bytes(p)
+        file_obj.methods['write_bytes'] = lambda p, d: file_wrapper.write_bytes(p, d)
+        file_obj.methods['exists'] = lambda p: file_wrapper.exists(p)
+        file_obj.methods['mkdir'] = lambda p: file_wrapper.mkdir(p)
+        file_obj.methods['rmdir'] = lambda p: file_wrapper.rmdir(p)
+        file_obj.methods['remove'] = lambda p: file_wrapper.remove(p)
+        file_obj.methods['list'] = lambda p: file_wrapper.list(p)
+        file_obj.methods['join'] = lambda a, b: file_wrapper.join(a, b)
+        file_obj.methods['cwd'] = lambda: file_wrapper.cwd()
+        self.global_env.define('File', file_obj)
+
+        # --- Network ---
+        class NetWrapper:
+            @staticmethod
+            def get(url):
+                try:
+                    with urllib.request.urlopen(url) as response:
+                        return response.read().decode('utf-8')
+                except Exception as e:
+                    raise lunite_error("STD LIB Net GET", str(e))
+            
+            @staticmethod
+            def post(url, data):
+                try:
+                    if isinstance(data, (dict, list)):
+                        payload = json.dumps(data).encode('utf-8')
+                        headers = {'Content-Type': 'application/json', 'User-Agent': LUNITE_USER_AGENT}
+                    else:
+                        payload = clean_str(data).encode('utf-8')
+                        headers = {'User-Agent': LUNITE_USER_AGENT}
+                    req = urllib.request.Request(url, data=payload, headers=headers, method='POST')
+                    with urllib.request.urlopen(req) as response:
+                        return response.read().decode('utf-8')
+                except Exception as e:
+                    raise lunite_error("STD LIB Net POST", str(e))
+
+        net_obj = LuniteInstance(ClassDef("Net", Block([]), None))
+        net_wrapper = NetWrapper()
+        net_obj.methods['get'] = lambda u: net_wrapper.get(u)
+        net_obj.methods['post'] = lambda u, d: net_wrapper.post(u, d)
+        self.global_env.define('Net', net_obj)
+
+        class JsonWrapper:
+            @staticmethod
+            def encode(o): return json.dumps(o)
+            
+            @staticmethod
+            def decode(s): return json.loads(s)
+
+        json_obj = LuniteInstance(ClassDef("Json", Block([]), None))
+        json_wrapper = JsonWrapper()
+        json_obj.methods['encode'] = lambda o: json_wrapper.encode(o)
+        json_obj.methods['decode'] = lambda s: json_wrapper.decode(s)
+        self.global_env.define('Json', json_obj)
 
         # --- System ---
-        def stop_impl(code=0):
-            sys.stdout.flush()
+        class SysWrapper:
+            @staticmethod
+            def cmd(c): return subprocess.getoutput(c)
             
-            exit_code = 0
-            try:
-                exit_code = int(code)
-            except (ValueError, TypeError):
-                exit_code = 0
+            @staticmethod
+            def os(): return platform.system()
             
-            sys.exit(exit_code)
-
-        self.global_env.define('cmd', lambda c: subprocess.getoutput(c))
-        self.global_env.define('os_name', lambda: platform.system())
-        self.global_env.define('stop', stop_impl)
-        self.global_env.define('args', lambda: sys.argv)
-        self.global_env.define('env', lambda key: os.environ.get(str(key), None))
-        
-        # --- Network ---
-        def http_get(url):
-            try:
-                with urllib.request.urlopen(url) as response:
-                   return response.read().decode('utf-8')
-            except Exception as e:
-                raise lunite_error(
-                    "STD LIB HTTP GET",
-                    str(e)
-                )
-        
-        def http_post(url, data):
-            try:
-                if isinstance(data, (dict, list)):
-                    payload = json.dumps(data).encode('utf-8')
-                    headers = {'Content-Type': 'application/json', 'User-Agent': LUNITE_USER_AGENT}
-                else:
-                    payload = clean_str(data).encode('utf-8')
-                    headers = {'User-Agent': LUNITE_USER_AGENT}
-                
-                req = urllib.request.Request(url, data=payload, headers=headers, method='POST')
-                with urllib.request.urlopen(req) as response:
-                    return response.read().decode('utf-8')
-            except Exception as e:
-                raise lunite_error(
-                    "STD LIB FIO HTTP POST",
-                    str(e)
-                )
-
-        self.global_env.define('http_get', http_get)
-        self.global_env.define('http_post', http_post)
-        self.global_env.define('json_encode', lambda x: json.dumps(x))
-        self.global_env.define('json_decode', lambda x: json.loads(x))
-
-        # --- Binary (Bytes) I/O ---
-        def read_bytes(path):
-            try:
-                with open(path, 'rb') as f: return f.read()
-            except Exception as e: return None
-        
-        def write_bytes(path, data):
-            try:
-                if isinstance(data, str): data = data.encode('utf-8')
-                with open(path, 'wb') as f: f.write(data)
-            except Exception as e:
-                raise lunite_error(
-                    "STD LIB BIO Write",
-                    str(e)
-                )
-
-        self.global_env.define('read_bytes', read_bytes)
-        self.global_env.define('write_bytes', write_bytes)
-        self.global_env.define('bytes', lambda lst: bytes(lst))
-
-        # --- Regex ---
-        class RegexWrapper:
-            def match(self, pattern, string):
-                return bool(re.match(pattern, string))
+            @staticmethod
+            def args(): return sys.argv
             
-            def search(self, pattern, string):
-                m = re.search(pattern, string)
-                if m: return m.groups()
-                return None
+            @staticmethod
+            def env(k): return os.environ.get(str(k), None)
             
-            def find_all(self, pattern, string):
-                return re.findall(pattern, string)
-            
-            def replace(self, pattern, repl, string):
-                return re.sub(pattern, repl, string)
+            @staticmethod
+            def exit(c=0):
+                sys.stdout.flush()
+                try: ec = int(c)
+                except: ec = 0
+                sys.exit(ec)
 
-        regex_obj = LuniteInstance(ClassDef("Regex", Block([]), None))
-        regex_wrapper = RegexWrapper()
-        regex_obj.methods['match'] = lambda p, s: regex_wrapper.match(p, s)
-        regex_obj.methods['search'] = lambda p, s: regex_wrapper.search(p, s)
-        regex_obj.methods['find_all'] = lambda p, s: regex_wrapper.find_all(p, s)
-        regex_obj.methods['replace'] = lambda p, r, s: regex_wrapper.replace(p, r, s)
-        
-        self.global_env.define('Regex', regex_obj)
+        sys_obj = LuniteInstance(ClassDef("Sys", Block([]), None))
+        sys_wrapper = SysWrapper()
+        sys_obj.methods['cmd'] = lambda c: sys_wrapper.cmd(c)
+        sys_obj.methods['os'] = lambda: sys_wrapper.os()
+        sys_obj.methods['args'] = lambda: sys_wrapper.args()
+        sys_obj.methods['env'] = lambda k: sys_wrapper.env(k)
+        sys_obj.methods['exit'] = lambda c=0: sys_wrapper.exit(c)
+        self.global_env.define('Sys', sys_obj)
 
         # --- Math ---
-        self.global_env.define('sin', lambda x: math.sin(x))
-        self.global_env.define('cos', lambda x: math.cos(x))
-        self.global_env.define('tan', lambda x: math.tan(x))
-        self.global_env.define('sqrt', lambda x: math.sqrt(x))
-        self.global_env.define('pow', lambda x, y: math.pow(x, y))
-        self.global_env.define('abs', lambda x: abs(x))
-        self.global_env.define('round', lambda x: round(x))
-        self.global_env.define('floor', lambda x: math.floor(x))
-        self.global_env.define('ceil', lambda x: math.ceil(x))
-        self.global_env.define('random', lambda: random.random())
-        self.global_env.define('randint', lambda a, b: random.randint(a, b))
+        class MathWrapper:
+            @staticmethod
+            def sin(x): return math.sin(x)
+            
+            @staticmethod
+            def cos(x): return math.cos(x)
+            
+            @staticmethod
+            def tan(x): return math.tan(x)
+            
+            @staticmethod
+            def sqrt(x): return math.sqrt(x)
+            
+            @staticmethod
+            def pow(x, y): return math.pow(x, y)
+            
+            @staticmethod
+            def abs(x): return abs(x)
+
+            @staticmethod
+            def round(x): return round(x)
+            
+            @staticmethod
+            def floor(x): return math.floor(x)
+            
+            @staticmethod
+            def ceil(x): return math.ceil(x)
+            
+            @staticmethod
+            def random(): return random.random()
+            
+            @staticmethod
+            def randint(a, b): return random.randint(a, b)
+            
+            @staticmethod
+            def max(a, b): return max(a, b)
+            
+            @staticmethod
+            def min(a, b): return min(a, b)
+        
+        math_obj = LuniteInstance(ClassDef("Math", Block([]), None))
+        math_wrapper = MathWrapper()
+        for method in dir(MathWrapper):
+            if not method.startswith('__'):
+                math_obj.methods[method] = getattr(MathWrapper, method)
+        math_obj.fields['pi'] = math.pi
+        self.global_env.define('Math', math_obj)
+
+        # --- Time ---
+        class TimeWrapper:
+            @staticmethod
+            def now(): return time.time()
+            
+            @staticmethod
+            def sleep(s): time.sleep(s)
+            
+            @staticmethod
+            def struct(ts=None):
+                if ts is None: ts = time.time()
+                dt = datetime.datetime.fromtimestamp(ts)
+                return {
+                    "year": dt.year, "month": dt.month, "day": dt.day,
+                    "hour": dt.hour, "minute": dt.minute, "second": dt.second,
+                    "weekday": dt.weekday()
+                }
+        
+        time_obj = LuniteInstance(ClassDef("Time", Block([]), None))
+        time_wrapper = TimeWrapper()
+        time_obj.methods['now'] = lambda: time_wrapper.now()
+        time_obj.methods['sleep'] = lambda s: time_wrapper.sleep(s)
+        time_obj.methods['struct'] = lambda t=None: time_wrapper.struct(t)
+        self.global_env.define('Time', time_obj)
+
+        # --- String ---
+        class StringWrapper:
+            @staticmethod
+            def upper(s): return clean_str(s).upper()
+            
+            @staticmethod
+            def lower(s): return clean_str(s).lower()
+            
+            @staticmethod
+            def trim(s): return clean_str(s).strip()
+            
+            @staticmethod
+            def replace(s, o, n): return clean_str(s).replace(clean_str(o), clean_str(n))
+            
+            @staticmethod
+            def split(s, d): return clean_str(s).split(clean_str(d))
+            
+            @staticmethod
+            def join(l, d): return clean_str(d).join([clean_str(i) for i in l])
+
+        str_obj = LuniteInstance(ClassDef("String", Block([]), None))
+        str_wrapper = StringWrapper()
+        str_obj.methods['upper'] = lambda s: str_wrapper.upper(s)
+        str_obj.methods['lower'] = lambda s: str_wrapper.lower(s)
+        str_obj.methods['trim'] = lambda s: str_wrapper.trim(s)
+        str_obj.methods['replace'] = lambda s, o, n: str_wrapper.replace(s, o, n)
+        str_obj.methods['split'] = lambda s, d: str_wrapper.split(s, d)
+        str_obj.methods['join'] = lambda l, d: str_wrapper.join(l, d)
+        self.global_env.define('String', str_obj)
+
+        # --- Global Intrinsics ---
         self.global_env.define('range', lambda a, b: list(range(a, b + 1)))
-
-        # --- Time & Date Helper ---
-        def date_struct_impl(ts=None):
-            if ts is None: ts = time.time()
-            dt = datetime.datetime.fromtimestamp(ts)
-            return {
-                "year": dt.year, "month": dt.month, "day": dt.day,
-                "hour": dt.hour, "minute": dt.minute, "second": dt.second,
-                "weekday": dt.weekday()
-            }
-        self.global_env.define('date_struct', date_struct_impl)
-        self.global_env.define('wait', lambda x: time.sleep(x))
-        self.global_env.define('time', lambda: time.time())
-
-        # --- Data ---
         self.global_env.define('str', lambda x: clean_str(x))
         self.global_env.define('int', lambda x: int(x))
         self.global_env.define('float', lambda x: float(x))
         self.global_env.define('bit', lambda x: LBit(x))
         self.global_env.define('byte', lambda x: LByte(x))
         self.global_env.define('char', lambda x: LChar(str(x)) if isinstance(x, (int, float)) else LChar(x))
-
-        # --- String / Utils ---
+        self.global_env.define('bytes', lambda lst: bytes(lst))
+        
         def get_type(x):
             if isinstance(x, LBit): return "Bit"
             if isinstance(x, LByte): return "Byte"
@@ -2060,15 +2175,35 @@ class Interpreter:
     
         self.global_env.define('len', lambda x: len(x))
         self.global_env.define('type', get_type)
-        
-        self.global_env.define('to_upper', lambda x: clean_str(x).upper())
-        self.global_env.define('to_lower', lambda x: clean_str(x).lower())
-        self.global_env.define('trim', lambda x: clean_str(x).strip())
-        self.global_env.define('replace', lambda s, old, new: clean_str(s).replace(clean_str(old), clean_str(new)))
-        self.global_env.define('split', lambda s, d: clean_str(s).split(clean_str(d)))
-        self.global_env.define('join', lambda lst, d: clean_str(d).join([clean_str(i) for i in lst]))
-        
         self.global_env.define('raise', lambda msg: (_ for _ in ()).throw(Exception(msg)))
+
+        # --- Regex ---
+        class RegexWrapper:
+            @staticmethod
+            def match(pattern, string):
+                return bool(re.match(pattern, string))
+            
+            @staticmethod
+            def search(pattern, string):
+                m = re.search(pattern, string)
+                if m: return m.groups()
+                return None
+            
+            @staticmethod
+            def find_all(pattern, string):
+                return re.findall(pattern, string)
+            
+            @staticmethod
+            def replace(pattern, repl, string):
+                return re.sub(pattern, repl, string)
+
+        regex_obj = LuniteInstance(ClassDef("Regex", Block([]), None))
+        regex_wrapper = RegexWrapper()
+        regex_obj.methods['match'] = lambda p, s: regex_wrapper.match(p, s)
+        regex_obj.methods['search'] = lambda p, s: regex_wrapper.search(p, s)
+        regex_obj.methods['find_all'] = lambda p, s: regex_wrapper.find_all(p, s)
+        regex_obj.methods['replace'] = lambda p, r, s: regex_wrapper.replace(p, r, s)
+        self.global_env.define('Regex', regex_obj)
     
     def visit(self, node):
         method_name = f'visit_{type(node).__name__}'
@@ -2685,51 +2820,61 @@ class Interpreter:
         
         if isinstance(obj, LuniteInstance):
             method = obj.methods.get(node.method_name)
-            if not method:
-                field = obj.fields.get(node.method_name)
-                if field and callable(field):
-                    try:
-                        pos_args, kw_args = self._evaluate_arguments(node.args)
-                        return field(*pos_args, **kw_args)
-                    except Exception as e:
-                         raise lunite_error("Method", str(e), node.line, node.col)
-                
-                raise lunite_error("Method", f"Method '{node.method_name}' not found", node.line, node.col)
-
-            prev_env = self.env
-            method_env = Environment(self.global_env)
-            method_env.define('this', obj)
             
-            pos_args, kw_args = self._evaluate_arguments(node.args)
+            if method and callable(method):
+                try:
+                    pos_args, kw_args = self._evaluate_arguments(node.args)
+                    return method(*pos_args, **kw_args)
+                except Exception as e:
+                     raise lunite_error("Method", str(e), node.line, node.col)
 
-            if len(pos_args) > len(method.params):
-                 raise lunite_error("Method", f"Too many positional arguments", node.line, node.col)
+            if method and isinstance(method, FunctionDef):
+                prev_env = self.env
+                method_env = Environment(self.global_env)
+                method_env.define('this', obj)
+                
+                pos_args, kw_args = self._evaluate_arguments(node.args)
 
-            for i, (p_name, p_default) in enumerate(method.params):
-                if i < len(pos_args):
-                    if p_name in kw_args: raise lunite_error("Method", f"Multiple values for '{p_name}'", node.line, node.col)
-                    method_env.define(p_name, pos_args[i])
-                elif p_name in kw_args:
-                    method_env.define(p_name, kw_args[p_name])
-                elif p_default is not None:
-                    val = self.visit(p_default)
-                    method_env.define(p_name, val)
-                else:
-                    raise lunite_error("Method", f"Missing argument for '{p_name}'", node.line, node.col)
+                if len(pos_args) > len(method.params):
+                     raise lunite_error("Method", f"Too many positional arguments for '{node.method_name}'", node.line, node.col)
 
-            old_file = globals()['CURRENT_FILE']
-            if hasattr(method, 'source_file'): globals()['CURRENT_FILE'] = method.source_file
-            elif hasattr(obj.mold, 'source_file'): globals()['CURRENT_FILE'] = obj.mold.source_file
+                for i, (p_name, p_default) in enumerate(method.params):
+                    if i < len(pos_args):
+                        if p_name in kw_args: raise lunite_error("Method", f"Multiple values for '{p_name}'", node.line, node.col)
+                        method_env.define(p_name, pos_args[i])
+                    elif p_name in kw_args:
+                        method_env.define(p_name, kw_args[p_name])
+                    elif p_default is not None:
+                        val = self.visit(p_default)
+                        method_env.define(p_name, val)
+                    else:
+                        raise lunite_error("Method", f"Missing argument for '{p_name}'", node.line, node.col)
 
-            self.env = method_env
-            try:
-                self.visit(method.body)
-            except ReturnException as e:
-                return e.value
-            finally:
-                self.env = prev_env
-                globals()['CURRENT_FILE'] = old_file
-            return None
+                old_file = globals()['CURRENT_FILE']
+                if hasattr(method, 'source_file'):
+                    globals()['CURRENT_FILE'] = method.source_file
+                elif hasattr(obj.mold, 'source_file'):
+                    globals()['CURRENT_FILE'] = obj.mold.source_file
+
+                self.env = method_env
+                try:
+                    self.visit(method.body)
+                except ReturnException as e:
+                    return e.value
+                finally:
+                    self.env = prev_env
+                    globals()['CURRENT_FILE'] = old_file
+                return None
+
+            field = obj.fields.get(node.method_name)
+            if field and callable(field):
+                try:
+                    pos_args, kw_args = self._evaluate_arguments(node.args)
+                    return field(*pos_args, **kw_args)
+                except Exception as e:
+                        raise lunite_error("Method", str(e), node.line, node.col)
+            
+            raise lunite_error("Method", f"Method '{node.method_name}' not found", node.line, node.col)
 
         if hasattr(obj, node.method_name):
             py_method = getattr(obj, node.method_name)
