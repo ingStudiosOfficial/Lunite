@@ -833,10 +833,41 @@ class Parser:
     def parse_args(self):
         args = []
         if self.current_token.type != TOKEN_RPAREN:
-            args.append(self.expr())
+            if self.current_token.type == TOKEN_ID and self.peek().type == TOKEN_ASSIGN:
+                id_token = self.current_token
+                self.eat(TOKEN_ID)
+                self.eat(TOKEN_ASSIGN)
+                val = self.expr()
+                
+                id_node = Identifier(id_token)
+                id_node.line = id_token.line
+                id_node.col = id_token.col
+                
+                node = Assign(id_node, val)
+                node.line = id_token.line
+                node.col = id_token.col
+                args.append(node)
+            else:
+                args.append(self.expr())
+
             while self.current_token.type == TOKEN_COMMA:
                 self.eat(TOKEN_COMMA)
-                args.append(self.expr())
+                if self.current_token.type == TOKEN_ID and self.peek().type == TOKEN_ASSIGN:
+                    id_token = self.current_token
+                    self.eat(TOKEN_ID)
+                    self.eat(TOKEN_ASSIGN)
+                    val = self.expr()
+                    
+                    id_node = Identifier(id_token)
+                    id_node.line = id_token.line
+                    id_node.col = id_token.col
+                    
+                    node = Assign(id_node, val)
+                    node.line = id_token.line
+                    node.col = id_token.col
+                    args.append(node)
+                else:
+                    args.append(self.expr())
         return args
 
     def atom(self):
@@ -1986,7 +2017,7 @@ class Interpreter:
         self.global_env.define('ceil', lambda x: math.ceil(x))
         self.global_env.define('random', lambda: random.random())
         self.global_env.define('randint', lambda a, b: random.randint(a, b))
-        self.global_env.define('range', lambda a, b: list(range(a, b)))
+        self.global_env.define('range', lambda a, b: list(range(a, b + 1)))
 
         # --- Time & Date Helper ---
         def date_struct_impl(ts=None):
@@ -2471,15 +2502,29 @@ class Interpreter:
         val = self.visit(node.value)
         raise ReturnException(val)
 
+    def _evaluate_arguments(self, arg_nodes):
+        pos_args = []
+        kw_args = {}
+        for node in arg_nodes:
+            if isinstance(node, Assign) and isinstance(node.left, Identifier):
+                key = node.left.token.value
+                val = self.visit(node.value)
+                kw_args[key] = val
+            else:
+                if kw_args:
+                    raise lunite_error("Syntax", "Positional argument follows keyword argument", node.line, node.col)
+                pos_args.append(self.visit(node))
+        return pos_args, kw_args
+
     def visit_FunctionCall(self, node):
         func = self.env.get(node.name, node.line, node.col)
+        
         if callable(func):
             try:
-                args = [self.visit(arg) for arg in node.args]
-                return func(*args)
+                pos_args, kw_args = self._evaluate_arguments(node.args)
+                return func(*pos_args, **kw_args)
             except Exception as e:
-                if hasattr(e, "has_location") and e.has_location:
-                    raise e
+                if hasattr(e, "has_location") and e.has_location: raise e
                 raise lunite_error("Function", str(e), node.line, node.col)
         
         if isinstance(func, (FunctionDef, LambdaExpr)):
@@ -2490,13 +2535,18 @@ class Interpreter:
             if isinstance(func, LambdaExpr):
                 f_params = [(p, None) for p in f_params]
 
-            if len(node.args) > len(f_params):
-                raise lunite_error("Function", f"Too many arguments", node.line, node.col)
+            pos_args, kw_args = self._evaluate_arguments(node.args)
+
+            if len(pos_args) > len(f_params):
+                raise lunite_error("Function", f"Too many positional arguments", node.line, node.col)
 
             for i, (p_name, p_default) in enumerate(f_params):
-                if i < len(node.args):
-                    val = self.visit(node.args[i])
-                    new_env.define(p_name, val)
+                if i < len(pos_args):
+                    if p_name in kw_args:
+                        raise lunite_error("Function", f"Multiple values for argument '{p_name}'", node.line, node.col)
+                    new_env.define(p_name, pos_args[i])
+                elif p_name in kw_args:
+                    new_env.define(p_name, kw_args[p_name])
                 elif p_default is not None:
                     val = self.visit(p_default)
                     new_env.define(p_name, val)
@@ -2504,8 +2554,7 @@ class Interpreter:
                     raise lunite_error("Function", f"Missing argument for '{p_name}'", node.line, node.col)
             
             old_file = globals()['CURRENT_FILE']
-            if hasattr(func, 'source_file'):
-                globals()['CURRENT_FILE'] = func.source_file
+            if hasattr(func, 'source_file'): globals()['CURRENT_FILE'] = func.source_file
 
             self.env = new_env
             try:
@@ -2591,37 +2640,35 @@ class Interpreter:
             name_hint = "Expression"
             if isinstance(node.class_expr, Identifier): name_hint = node.class_expr.token.value
             elif isinstance(node.class_expr, MemberAccess): name_hint = node.class_expr.member_name
-            
-            raise lunite_error(
-                "Class",
-                f"'{name_hint}' is not a class (got {type(cls_def).__name__})",
-                node.line,
-                node.col
-            )
+            raise lunite_error("Class", f"'{name_hint}' is not a class", node.line, node.col)
         
         instance = LuniteInstance(cls_def)
-        
         members = self._resolve_class_members(cls_def)
         instance.fields = members['fields']
         instance.methods = members['methods']
         
         if 'init' in instance.methods:
             init_method = instance.methods['init']
-            
             prev_env = self.env
             method_env = Environment(self.global_env)
             method_env.define('this', instance)
             
-            if len(node.args) != len(init_method.params):
-                raise lunite_error(
-                    "Class",
-                    f"Wrong number of constructor arguments (expected {len(init_method.params)}, got {len(node.args)})",
-                    node.line,
-                    node.col
-                )
+            pos_args, kw_args = self._evaluate_arguments(node.args)
+            
+            if len(pos_args) > len(init_method.params):
+                raise lunite_error("Class", "Too many constructor arguments", node.line, node.col)
 
-            for name, arg_node in zip(init_method.params, node.args):
-                method_env.define(name, self.visit(arg_node))
+            for i, (p_name, p_default) in enumerate(init_method.params):
+                if i < len(pos_args):
+                    if p_name in kw_args: raise lunite_error("Class", f"Multiple values for '{p_name}'", node.line, node.col)
+                    method_env.define(p_name, pos_args[i])
+                elif p_name in kw_args:
+                    method_env.define(p_name, kw_args[p_name])
+                elif p_default is not None:
+                    val = self.visit(p_default)
+                    method_env.define(p_name, val)
+                else:
+                    raise lunite_error("Class", f"Missing constructor argument '{p_name}'", node.line, node.col)
 
             self.env = method_env
             try:
@@ -2642,8 +2689,8 @@ class Interpreter:
                 field = obj.fields.get(node.method_name)
                 if field and callable(field):
                     try:
-                        args = [self.visit(arg) for arg in node.args]
-                        return field(*args)
+                        pos_args, kw_args = self._evaluate_arguments(node.args)
+                        return field(*pos_args, **kw_args)
                     except Exception as e:
                          raise lunite_error("Method", str(e), node.line, node.col)
                 
@@ -2653,13 +2700,17 @@ class Interpreter:
             method_env = Environment(self.global_env)
             method_env.define('this', obj)
             
-            if len(node.args) > len(method.params):
-                 raise lunite_error("Method", f"Too many arguments for '{node.method_name}'", node.line, node.col)
+            pos_args, kw_args = self._evaluate_arguments(node.args)
+
+            if len(pos_args) > len(method.params):
+                 raise lunite_error("Method", f"Too many positional arguments", node.line, node.col)
 
             for i, (p_name, p_default) in enumerate(method.params):
-                if i < len(node.args):
-                    val = self.visit(node.args[i])
-                    method_env.define(p_name, val)
+                if i < len(pos_args):
+                    if p_name in kw_args: raise lunite_error("Method", f"Multiple values for '{p_name}'", node.line, node.col)
+                    method_env.define(p_name, pos_args[i])
+                elif p_name in kw_args:
+                    method_env.define(p_name, kw_args[p_name])
                 elif p_default is not None:
                     val = self.visit(p_default)
                     method_env.define(p_name, val)
@@ -2667,16 +2718,13 @@ class Interpreter:
                     raise lunite_error("Method", f"Missing argument for '{p_name}'", node.line, node.col)
 
             old_file = globals()['CURRENT_FILE']
-            if hasattr(method, 'source_file'):
-                globals()['CURRENT_FILE'] = method.source_file
-            elif hasattr(obj.mold, 'source_file'):
-                globals()['CURRENT_FILE'] = obj.mold.source_file
+            if hasattr(method, 'source_file'): globals()['CURRENT_FILE'] = method.source_file
+            elif hasattr(obj.mold, 'source_file'): globals()['CURRENT_FILE'] = obj.mold.source_file
 
             self.env = method_env
             try:
                 self.visit(method.body)
             except ReturnException as e:
-                self.env = prev_env
                 return e.value
             finally:
                 self.env = prev_env
@@ -2687,8 +2735,8 @@ class Interpreter:
             py_method = getattr(obj, node.method_name)
             if callable(py_method):
                 try:
-                    args = [self.visit(arg) for arg in node.args]
-                    return py_method(*args)
+                    pos_args, kw_args = self._evaluate_arguments(node.args)
+                    return py_method(*pos_args, **kw_args)
                 except Exception as e:
                     raise lunite_error("Interop", str(e), node.line, node.col)
         
