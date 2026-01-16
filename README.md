@@ -16,6 +16,10 @@
 Lunite is a modern **hybrid programming language** that blends **Object-Oriented Programming (OOP)** and **Procedural-Oriented Programming (POP)** paradigms.
 It supports both **interpreted execution** and **compiled ("binded") workflows**, and is built **on top of Python** for flexibility, power, and rapid development.
 
+✅ **Stable Branch**  
+The `stable` branch has been created. It will begin getting commits after Lunite v2.0.0.  
+👉 [Click here to visit the stable branch](https://github.com/SubhrajitSain/Lunite/tree/stable)
+
 📘 **Documentation**  
 👉 [Click here to read the official Lunite documentation](https://verbena-dream-15b.notion.site/Lunite-Docs-2e947befe6ac80b8bba0c5cca9c6aeb1)
 
