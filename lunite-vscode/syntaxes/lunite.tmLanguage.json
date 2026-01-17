@@ -155,15 +155,11 @@
       "patterns": [
         {
           "name": "support.function.builtin.luna",
-          "match": "\\b(out|in|len|type|wait|time|cmd|os_name|stop|read_file|write_file|http_get|http_post|json_encode|json_decode|raise|date_struct|to_upper|to_lower|trim|replace|split|join|args|env|read_bytes|write_bytes|mkdir|rmdir|remove|listdir|exists|path_join|getcwd)\\b"
-        },
-        {
-          "name": "support.function.math.luna",
-          "match": "\\b(sin|cos|tan|sqrt|pow|abs|round|floor|ceil|random|randint|range)\\b"
+          "match": "\\b(out|in|len|type|raise|range|list)\\b"
         },
         {
           "name": "support.class.builtin.luna",
-          "match": "\\b(Regex)\\b"
+          "match": "\\b(Math|File|Net|Json|Sys|Time|String|Regex)\\b"
         },
         {
           "name": "support.type.primitive.luna",
@@ -199,7 +195,7 @@
       "patterns": [
         {
           "name": "keyword.operator.luna",
-          "match": "\\+|-|\\*|/|%|==|!=|<|>|<=|>=|=|!|&|\\||\\^|~|<<|>>|\\?|:|=>"
+          "match": "\\+|-|\\*|/|%|==|!=|<|>|<=|>=|=|!|&|\\||\\^|~|<<|>>|\\?|:|=>|;"
         }
       ]
     }
