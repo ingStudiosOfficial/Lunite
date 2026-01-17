@@ -1,0 +1,81 @@
+out("Lunite Stress Test")
+out("------------------")
+let start_total = Time.now()
+
+~~ test 1 - fibonacci
+func fib(n) {
+    if (n <= 1) { return n }
+    return fib(n - 1) + fib(n - 2)
+}
+
+out("\n[1] Calculating Fibonacci(25)...")
+let t1 = Time.now()
+let f_res = fib(25)
+let t2 = Time.now()
+out(f"    Result: {f_res}")
+out(f"    Time: {Math.round((t2 - t1) * 1000)} ms")
+
+~~ test 2 - memory and loop stress
+let list_size = 50000
+out(f"\n[2] Allocating and filling list of {list_size} items...")
+
+let t3 = Time.now()
+let arr = list(list_size, "float")
+let sum = 0.0
+
+for i in range(0, list_size - 1) {
+    arr[i] = Math.random() * 100.0
+    sum += arr[i]
+}
+let t4 = Time.now()
+out(f"    Sum: {Math.round(sum)}")
+out(f"    Time: {Math.round((t4 - t3) * 1000)} ms")
+
+~~ test 3 - oop instantiation
+class Vector {
+    func init(x, y, z) {
+        this.x = x
+        this.y = y
+        this.z = z
+    }
+    func mag() {
+        return Math.sqrt((this.x * this.x) + (this.y * this.y) + (this.z * this.z))
+    }
+}
+
+let obj_count = 10000
+out(f"\n[3] Creating {obj_count} objects...")
+
+let t5 = Time.now()
+let objects = list(obj_count, "null")
+
+for i in range(0, obj_count - 1) {
+    objects[i] = new Vector(i, i+1, i+2)
+    let m = objects[i].mag()
+}
+let t6 = Time.now()
+
+out(f"    Last Mag: {Math.round(objects[obj_count-1].mag())}")
+out(f"    Time: {Math.round((t6 - t5) * 1000)} ms")
+
+~~ test 4 - string concat and loop
+out("\n[4] String Operations...")
+let t7 = Time.now()
+let s = ""
+let limit = 5000
+
+for i in range(0, limit) {
+    s += "LUNITE"
+    s = String.lower(s)
+    s = String.upper(s)
+}
+let t8 = Time.now()
+
+out(f"    Final Length: {len(s)}")
+out(f"    Time: {Math.round((t8 - t7) * 1000)} ms")
+
+~~ result
+let end_total = Time.now()
+out("\n--------------------")
+out("Stress Test Complete")
+out(f"Total Execution Time: {Math.round((end_total - start_total) * 1000)} ms")

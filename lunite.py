@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # /== == == == == == == == == == ==\
-# |==  LUNITE - v1.9.2 - by ANW  ==|
+# |==  LUNITE - v1.9.3 - by ANW  ==|
 # \== == == == == == == == == == ==/
 
 import sys
@@ -30,10 +30,17 @@ except ImportError:
 # VERSION & CONFIG
 # ==========================================
 
-LUNITE_VERSION_STR = "v1.9.2"
+LUNITE_VERSION_STR = "v1.9.3"
 COPYRIGHT          = "Copyright ANW, 2025-2026"
-LUNITE_USER_AGENT  = "Lunite/1.9.2"
+LUNITE_USER_AGENT  = "Lunite/1.9.3"
 CURRENT_FILE       = "REPL"
+
+# ==========================================
+# PRE-COMPILED REGEX
+# ==========================================
+
+RE_NUMBER = re.compile(r'\d+(\.\d+)?')
+RE_ID     = re.compile(r'[a-zA-Z_]\w*')
 
 # ==========================================
 # CUSTOM EXCEPTION FORMATTER
@@ -168,6 +175,7 @@ class LChar(str):
 
 @dataclass
 class Token:
+    __slots__ = ('type', 'value', 'line', 'col')
     type: TokenType
     value: Any
     line: int
@@ -218,46 +226,49 @@ class Lexer:
             self.advance()
     
     def make_identifier(self):
-        start_col = self.col
-        id_str = ''
-        while self.current_char is not None and (self.current_char.isalnum() or self.current_char == '_'):
-            id_str += self.current_char
-            self.advance()
-        
-        if id_str == 'and':
-            return Token(TOKEN_AND, 'and', self.line, start_col)
-        if id_str == 'or':
-            return Token(TOKEN_OR, 'or', self.line, start_col)
-        if id_str == 'not':
-            return Token(TOKEN_NOT, 'not', self.line, start_col)
-        if id_str == 'is':
-            return Token(TOKEN_IS, 'is', self.line, start_col)
-
-        if id_str in KEYWORDS:
-            return Token(TOKEN_KEYWORD, id_str, self.line, start_col)
+        match = RE_ID.match(self.source, self.pos)
+        if match:
+            id_str = match.group(0)
+            start_col = self.col
             
-        return Token(TOKEN_ID, id_str, self.line, start_col)
+            # Update Lexer state
+            self.pos += len(id_str)
+            self.col += len(id_str)
+            if self.pos < len(self.source):
+                self.current_char = self.source[self.pos]
+            else:
+                self.current_char = None
+            
+            # Keyword Logic
+            if id_str == 'and': return Token(TOKEN_AND, 'and', self.line, start_col)
+            if id_str == 'or': return Token(TOKEN_OR, 'or', self.line, start_col)
+            if id_str == 'not': return Token(TOKEN_NOT, 'not', self.line, start_col)
+            if id_str == 'is': return Token(TOKEN_IS, 'is', self.line, start_col)
+            if id_str in KEYWORDS: return Token(TOKEN_KEYWORD, id_str, self.line, start_col)
+            
+            return Token(TOKEN_ID, id_str, self.line, start_col)
+        
+        # Fallback should technically never happen if called correctly
+        return Token(TOKEN_EOF, None, self.line, self.col)
 
     def make_number(self):
-        start_col = self.col
-        num_str = ''
-        dot_count = 0
-        
-        while self.current_char is not None and (self.current_char.isdigit() or self.current_char == '.'):
-            if self.current_char == '.':
-                if dot_count == 1: 
-                    break
-                
-                dot_count += 1
-                num_str += '.'
+        match = RE_NUMBER.match(self.source, self.pos)
+        if match:
+            num_str = match.group(0)
+            start_col = self.col
+            
+            self.pos += len(num_str)
+            self.col += len(num_str)
+            if self.pos < len(self.source):
+                self.current_char = self.source[self.pos]
             else:
-                num_str += self.current_char
-            self.advance()
-        
-        if dot_count == 0:
+                self.current_char = None
+            
+            if '.' in num_str:
+                return Token(TOKEN_FLOAT, float(num_str), self.line, start_col)
             return Token(TOKEN_INT, int(num_str), self.line, start_col)
-        else:
-            return Token(TOKEN_FLOAT, float(num_str), self.line, start_col)
+            
+        return Token(TOKEN_EOF, None, self.line, self.col)
 
     def make_string(self):
         start_col = self.col
@@ -1754,16 +1765,19 @@ class Parser:
 # ==========================================
 
 class Environment:
+    __slots__ = ('values', 'constants', 'parent')
     def __init__(self, parent=None):
         self.values = {}
         self.constants = set()
         self.parent = parent
 
     def get(self, name, line, col):
-        if name in self.values:
-            return self.values[name]
-        if self.parent:
-            return self.parent.get(name, line, col)
+        current = self
+        while current is not None:
+            if name in current.values:
+                return current.values[name]
+            current = current.parent
+            
         raise lunite_error("Runtime", f"Variable '{name}' is undefined", line, col)
 
     def define(self, name, value, is_const=False):
@@ -1772,14 +1786,15 @@ class Environment:
             self.constants.add(name)
 
     def assign(self, name, value, line, col):
-        if name in self.values:
-            if name in self.constants:
-                raise lunite_error("Runtime", f"Cannot reassign constant '{name}'", line, col)
-            self.values[name] = value
-            return
-        if self.parent:
-            self.parent.assign(name, value, line, col)
-            return
+        current = self
+        while current is not None:
+            if name in current.values:
+                if name in current.constants:
+                    raise lunite_error("Runtime", f"Cannot reassign constant '{name}'", line, col)
+                current.values[name] = value
+                return
+            current = current.parent
+            
         raise lunite_error("Runtime", f"Undefined variable '{name}' cannot be assigned a value", line, col)
     
 class LuniteInstance:
@@ -1819,6 +1834,7 @@ class Interpreter:
         self.setup_std_lib()
         self.env = self.global_env
         self.imported_files = imported_files if imported_files else {}
+        self.visit_cache = {}
 
     def setup_std_lib(self):
         def clean_str(val):
@@ -2174,8 +2190,13 @@ class Interpreter:
         self.global_env.define('Regex', regex_obj)
     
     def visit(self, node):
-        method_name = f'visit_{type(node).__name__}'
-        method = getattr(self, method_name, self.no_visit)
+        node_type = type(node)
+        method = self.visit_cache.get(node_type)
+        
+        if method is None:
+            method_name = f'visit_{node_type.__name__}'
+            method = getattr(self, method_name, self.no_visit)
+            self.visit_cache[node_type] = method
         
         try:
             return method(node)
