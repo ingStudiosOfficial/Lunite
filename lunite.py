@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # /== == == == == == == == == == ==\
-# |==  LUNITE - v1.9.1 - by ANW  ==|
+# |==  LUNITE - v1.9.2 - by ANW  ==|
 # \== == == == == == == == == == ==/
 
 import sys
@@ -30,9 +30,9 @@ except ImportError:
 # VERSION & CONFIG
 # ==========================================
 
-LUNITE_VERSION_STR = "v1.9.1"
+LUNITE_VERSION_STR = "v1.9.2"
 COPYRIGHT          = "Copyright ANW, 2025-2026"
-LUNITE_USER_AGENT  = "Lunite/1.9.1"
+LUNITE_USER_AGENT  = "Lunite/1.9.2"
 CURRENT_FILE       = "REPL"
 
 # ==========================================
@@ -43,12 +43,11 @@ def lunite_error(kind, message, line=None, col=None):
     loc = ""
     file = CURRENT_FILE
     if line is not None and col is not None:
-        loc = f"\n{Fore.MAGENTA}   File:{Style.RESET_ALL} {file}{Fore.MAGENTA}:{Style.RESET_ALL}{line}{Fore.MAGENTA}:{Style.RESET_ALL}{col}"
+        loc = f"\n{Fore.MAGENTA}   File: {file}:{line}:{col}{Style.RESET_ALL}"
 
-    e = Exception(
-        f"{Fore.RED}{kind} Error:{Style.RESET_ALL} {message}" + loc
-    )
+    e = Exception(f"{Fore.RED}{kind} Error:{Style.RESET_ALL} {message}{loc}")
     e.has_location = True
+    e.message_only = message
     return e
 
 # ==========================================
@@ -306,12 +305,7 @@ class Lexer:
         
         if quote == "'":
             if len(s) != 1:
-                raise lunite_error(
-                    "Syntax",
-                    "Char literal must be length 1.",
-                    start_line,
-                    start_col
-                )
+                raise lunite_error("Syntax", "Char literal must be length 1.", start_line, start_col)
             return Token(TOKEN_CHAR, s, start_line, start_col)
             
         return Token(TOKEN_STRING, s, start_line, start_col)
@@ -527,12 +521,7 @@ class Lexer:
                     return Token(TOKEN_NEQ, '!=', self.line, start_col)
                 return Token(TOKEN_NOT, '!', self.line, start_col)
             
-            raise lunite_error(
-                "Syntax",
-                f"Illegal character '{self.current_char}",
-                self.line,
-                self.col
-            )
+            raise lunite_error("Syntax", f"Illegal character '{self.current_char}", self.line, self.col)
 
         return Token(TOKEN_EOF, None, self.line, self.col)
         
@@ -749,6 +738,12 @@ class DestructuringDecl(AST):
     value: AST
     is_const: bool = False
 
+@dataclass
+class SliceAccess(AST):
+    target: AST
+    start: Optional[AST]
+    end: Optional[AST]
+
 # ==========================================
 # PARSER
 # ==========================================
@@ -828,12 +823,7 @@ class Parser:
             if self.pos < len(self.tokens):
                 self.current_token = self.tokens[self.pos]
         else:
-            raise lunite_error(
-                "Syntax",
-                f"Unexpected token {self.current_token.type}, expected {token_type}",
-                token.line,
-                token.col
-            )
+            raise lunite_error("Syntax", f"Unexpected token {self.current_token.type}, expected {token_type}", token.line, token.col)
 
     def peek(self):
         if self.pos + 1 < len(self.tokens):
@@ -1152,12 +1142,7 @@ class Parser:
                     if isinstance(e, Identifier):
                         params.append(e.token.value)
                     else:
-                        raise lunite_error(
-                            "Syntax",
-                            "Lambda parameters must be identifiers",
-                            self.current_token.line,
-                            self.current_token.col
-                        )
+                        raise lunite_error("Syntax", "Lambda parameters must be identifiers", self.current_token.line, self.current_token.col)
                 
                 if self.current_token.type == TOKEN_LBRACE:
                     self.eat(TOKEN_LBRACE)
@@ -1177,12 +1162,7 @@ class Parser:
             node.col = token.col
             return node
         
-        raise lunite_error(
-            "Syntax",
-            f"Invalid atom '{token.value}'",
-            token.line,
-            token.col
-        )
+        raise lunite_error("Syntax", f"Invalid atom '{token.value}'", token.line, token.col)
 
     def factor(self):
         token = self.current_token
@@ -1215,11 +1195,35 @@ class Parser:
             
             elif self.current_token.type == TOKEN_LBRACKET:
                 self.eat(TOKEN_LBRACKET)
-                index = self.expr()
+                
+                start = None
+                end = None
+                is_slice = False
+                
+                if self.current_token.type == TOKEN_COLON:
+                    is_slice = True
+                    self.eat(TOKEN_COLON)
+                    if self.current_token.type != TOKEN_RBRACKET:
+                        end = self.expr()
+                else:
+                    start = self.expr()
+                    
+                    if self.current_token.type == TOKEN_COLON:
+                        is_slice = True
+                        self.eat(TOKEN_COLON)
+                        if self.current_token.type != TOKEN_RBRACKET:
+                            end = self.expr()
+                
                 self.eat(TOKEN_RBRACKET)
-                node = IndexAccess(node, index)
-                node.line = index.line
-                node.col = index.col
+                
+                if is_slice:
+                    node = SliceAccess(node, start, end)
+                    node.line = token.line
+                    node.col = token.col
+                else:
+                    node = IndexAccess(node, start)
+                    node.line = token.line
+                    node.col = token.col
         
         return node
 
@@ -1338,12 +1342,7 @@ class Parser:
                 module_name = self.current_token.value
                 self.eat(TOKEN_STRING)
             else:
-                raise lunite_error(
-                    "Syntax",
-                    "Expected module name after 'import'",
-                    token.line,
-                    token.col
-                )
+                raise lunite_error("Syntax", "Expected module name after 'import'", token.line, token.col)
             
             source_package = None
             if self.current_token.type == TOKEN_KEYWORD and self.current_token.value == 'from':
@@ -1355,12 +1354,7 @@ class Parser:
                     source_package = self.current_token.value
                     self.eat(TOKEN_ID)
                 else:
-                    raise lunite_error(
-                        "Syntax",
-                        "Expected package name after 'from'",
-                        self.current_token.line,
-                        self.current_token.col
-                    )
+                    raise lunite_error("Syntax", "Expected package name after 'from'", self.current_token.line, self.current_token.col)
 
             node = ImportStatement(module_name, source_package)
             node.line = token.line
@@ -1377,12 +1371,7 @@ class Parser:
                 name = self.current_token.value
                 self.eat(TOKEN_STRING)
             else:
-                raise lunite_error(
-                    "Syntax",
-                    "Expected Python module name after 'import_py'",
-                    token.line,
-                    token.col
-                )
+                raise lunite_error("Syntax", "Expected Python module name after 'import_py'", token.line, token.col)
             
             source_package = None
             if self.current_token.type == TOKEN_KEYWORD and self.current_token.value == 'from':
@@ -1394,12 +1383,7 @@ class Parser:
                     source_package = self.current_token.value
                     self.eat(TOKEN_ID)
                 else:
-                    raise lunite_error(
-                        "Import",
-                        "Expected Python package name after 'from'",
-                        self.current_token.line,
-                        self.current_token.col
-                    )
+                    raise lunite_error("Import", "Expected Python package name after 'from'", self.current_token.line, self.current_token.col)
             
             node = ImportPyStatement(name, alias=name, source_package=source_package)
             node.line = token.line
@@ -1552,12 +1536,7 @@ class Parser:
             if self.current_token.type == TOKEN_KEYWORD and self.current_token.value == 'in':
                 self.eat(TOKEN_KEYWORD)
             else:
-                raise lunite_error(
-                    "Syntax",
-                    "Expected 'in' after 'for'",
-                    token.line,
-                    token.col
-                )
+                raise lunite_error("Syntax", "Expected 'in' after 'for'", token.line, token.col)
             iterable = self.expr()
             self.eat(TOKEN_LBRACE)
             body = self.block()
@@ -1583,12 +1562,7 @@ class Parser:
                 catch_block = self.block()
                 self.eat(TOKEN_RBRACE)
             else:
-                raise lunite_error(
-                    "Syntax",
-                    "Expected 'rescue' after 'attempt'",
-                    token.line,
-                    token.col
-                )
+                raise lunite_error("Syntax", "Expected 'rescue' after 'attempt'", token.line, token.col)
             
             finally_block = None
             if self.current_token.type == TOKEN_KEYWORD and self.current_token.value == 'finally':
@@ -1648,12 +1622,7 @@ class Parser:
                 self.eat(TOKEN_INT)
                 node = LeapStatement(target)
             else:
-                raise lunite_error(
-                    "Syntax",
-                    "Expected label name or line number after 'leap'",
-                    token.line,
-                    token.col
-                )
+                raise lunite_error("Syntax", "Expected label name or line number after 'leap'", token.line, token.col)
             node.line = token.line
             node.col = token.col
             return node
@@ -1795,12 +1764,7 @@ class Environment:
             return self.values[name]
         if self.parent:
             return self.parent.get(name, line, col)
-        raise lunite_error(
-            "Runtime",
-            f"Variable '{name}' is undefined",
-            line,
-            col
-        )
+        raise lunite_error("Runtime", f"Variable '{name}' is undefined", line, col)
 
     def define(self, name, value, is_const=False):
         self.values[name] = value
@@ -1810,23 +1774,13 @@ class Environment:
     def assign(self, name, value, line, col):
         if name in self.values:
             if name in self.constants:
-                raise lunite_error(
-                    "Runtime",
-                    f"Cannot reassign constant '{name}'",
-                    line,
-                    col
-                )
+                raise lunite_error("Runtime", f"Cannot reassign constant '{name}'", line, col)
             self.values[name] = value
             return
         if self.parent:
             self.parent.assign(name, value, line, col)
             return
-        raise lunite_error(
-            "Runtime",
-            f"Undefined variable '{name}' cannot be assigned a value",
-            line,
-            col
-        )
+        raise lunite_error("Runtime", f"Undefined variable '{name}' cannot be assigned a value", line, col)
     
 class LuniteInstance:
     def __init__(self, mold_node):
@@ -1839,12 +1793,7 @@ class LuniteInstance:
             return self.fields[name]
         if name in self.methods:
             return self.methods[name]
-        raise lunite_error(
-            "Runtime",
-            f"Class '{self.mold.name}' does not contain the property '{name}'",
-            line,
-            col
-        )
+        raise lunite_error("Runtime", f"Class '{self.mold.name}' does not contain the property '{name}'", line, col)
 
     def set(self, name, val):
         self.fields[name] = val
@@ -1895,10 +1844,7 @@ class Interpreter:
                 if type_hint == "char": return LChar(text)
                 return text
             except ValueError:
-                raise lunite_error(
-                    "STD LIB Input",
-                    f"Failed to convert '{text}' to type {type_hint}"
-                )
+                raise lunite_error("STD LIB Input", f"Failed to convert '{text}' to type {type_hint}")
                 
         self.global_env.define('in', lunite_input)
         
@@ -2147,6 +2093,28 @@ class Interpreter:
         self.global_env.define('String', str_obj)
 
         # --- Global Intrinsics ---
+        def create_list_impl(n, hint="null"):
+            try:
+                count = int(n)
+            except ValueError:
+                raise Exception("List size must be an integer")
+
+            default_val = None
+            
+            if hint == "int": default_val = 0
+            elif hint == "float": default_val = 0.0
+            elif hint == "bool": default_val = False
+            elif hint == "bit": default_val = LBit(0)
+            elif hint == "byte": default_val = LByte(0)
+            elif hint == "char": default_val = LChar('\0')
+            elif hint == "str": default_val = ""
+            
+            elif hint == "list": return [[] for _ in range(count)]
+            elif hint == "dict": return [{} for _ in range(count)]
+            
+            return [default_val] * count
+
+        self.global_env.define('list', create_list_impl)
         self.global_env.define('range', lambda a, b: list(range(a, b + 1)))
         self.global_env.define('str', lambda x: clean_str(x))
         self.global_env.define('int', lambda x: int(x))
@@ -2212,27 +2180,23 @@ class Interpreter:
         try:
             return method(node)
         except Exception as e:
-            if hasattr(e, "has_location") and e.has_location:
-                raise e
-            
             if isinstance(e, (ReturnException, BreakException, AdvanceException, LeapException)):
                 raise e
+            
+            if hasattr(e, "has_location") and e.has_location:
+                if isinstance(node, (FunctionCall, MethodCall, NewInstance)):
+                    stack_trace = f"\n{Fore.YELLOW}   called from:{Style.RESET_ALL} {CURRENT_FILE}:{node.line}:{node.col}"
+                    
+                    if e.args:
+                        new_msg = e.args[0] + stack_trace
+                        e.args = (new_msg,) + e.args[1:]
+                raise e
 
-            err = lunite_error(
-                "Runtime",
-                str(e),
-                node.line,
-                node.col
-            )
+            err = lunite_error("Runtime", str(e), node.line, node.col)
             raise err
 
     def no_visit(self, node):
-        raise lunite_error(
-            "Internal Lunite",
-            f"No visit_{type(node).__name__} method defined in Lunite",
-            node.line,
-            node.col
-        )
+        raise lunite_error("Internal Lunite", f"No visit_{type(node).__name__} method defined in Lunite", node.line, node.col)
 
     def visit_Block(self, node):
         result = None
@@ -2390,12 +2354,7 @@ class Interpreter:
             if isinstance(obj, LuniteInstance):
                 obj.set(node.left.member_name, val)
             else:
-                raise lunite_error(
-                    "Assignment",
-                    "Cannot set a property on a non-instance",
-                    node.line,
-                    node.col
-                )
+                raise lunite_error("Assignment", "Cannot set a property on a non-instance", node.line, node.col)
         
         elif isinstance(node.left, IndexAccess):
             target = self.visit(node.left.target)
@@ -2403,26 +2362,11 @@ class Interpreter:
             try:
                 target[index] = val
             except TypeError:
-                raise lunite_error(
-                    "Assignment",
-                    "Target does not support index assignment",
-                    node.line,
-                    node.col
-                )
+                raise lunite_error("Assignment", "Target does not support index assignment", node.line, node.col)
             except IndexError:
-                raise lunite_error(
-                    "Assignment",
-                    "Provided index is out of bounds",
-                    node.line,
-                    node.col
-                )
+                raise lunite_error("Assignment", "Provided index is out of bounds", node.line, node.col)
         else:
-            raise lunite_error(
-                "Assignment",
-                "No such assignment target",
-                node.line,
-                node.col
-            )
+            raise lunite_error("Assignment", "No such assignment target", node.line, node.col)
 
         return val
 
@@ -2438,12 +2382,7 @@ class Interpreter:
             index = self.visit(node.left.index)
             curr_val = target[index]
         else:
-            raise lunite_error(
-                "Assignment",
-                "Invalid target for compound assignment",
-                node.line,
-                node.col
-            )
+            raise lunite_error("Assignment", "Invalid target for compound assignment", node.line, node.col)
 
         right_val = self.visit(node.value)
         op = node.op.type
@@ -2471,28 +2410,39 @@ class Interpreter:
 
     def visit_IfStatement(self, node):
         if self.visit(node.condition):
-            return self.visit(node.true_block)
+            prev = self.env
+            self.env = Environment(prev)
+            try:
+                return self.visit(node.true_block)
+            finally:
+                self.env = prev
         elif node.false_block:
-            return self.visit(node.false_block)
+            prev = self.env
+            self.env = Environment(prev)
+            try:
+                return self.visit(node.false_block)
+            finally:
+                self.env = prev
 
     def visit_WhileStatement(self, node):
         while self.visit(node.condition):
+            prev = self.env
+            self.env = Environment(prev)
             try:
                 self.visit(node.body)
             except BreakException:
+                self.env = prev
                 break
             except AdvanceException:
+                self.env = prev
                 continue
+            finally:
+                self.env = prev
     
     def visit_ForStatement(self, node):
         iterable = self.visit(node.iterable)
         if not hasattr(iterable, '__iter__'):
-            raise lunite_error(
-                "Loop",
-                "Expected iterable for 'for' loop",
-                node.line,
-                node.col
-            )
+            raise lunite_error("Loop", "Expected iterable for 'for' loop", node.line, node.col)
 
         prev_env = self.env
         for item in iterable:
@@ -2529,23 +2479,34 @@ class Interpreter:
 
     def visit_TryCatchStatement(self, node):
         try:
-            return self.visit(node.try_block)
+            prev = self.env
+            self.env = Environment(prev)
+            try:
+                return self.visit(node.try_block)
+            finally:
+                self.env = prev
         except Exception as e:
-            if isinstance(e, ReturnException):
-                raise e
+            if isinstance(e, (ReturnException)): raise e
             
-            prev_env = self.env
-            rescue_env = Environment(prev_env)
-            rescue_env.define(node.error_var, str(e))
+            prev = self.env
+            rescue_env = Environment(prev)
+            msg = str(e)
+            if hasattr(e, "message_only"): msg = e.message_only
+            
+            rescue_env.define(node.error_var, msg)
             self.env = rescue_env
-            
             try:
                 return self.visit(node.catch_block)
             finally:
-                self.env = prev_env
+                self.env = prev
         finally:
             if node.finally_block:
-                self.visit(node.finally_block)
+                prev = self.env
+                self.env = Environment(prev)
+                try:
+                    self.visit(node.finally_block)
+                finally:
+                    self.env = prev
 
     def visit_ImportStatement(self, node):
         ctx_dir = os.path.dirname(os.path.abspath(CURRENT_FILE)) if CURRENT_FILE != "REPL" else os.getcwd()
@@ -2620,6 +2581,13 @@ class Interpreter:
         self.env.define(alias, module_obj)
     
     def visit_FunctionDef(self, node):
+        reserved_types = {
+            'int', 'float', 'str', 'bool', 'bit', 'byte', 
+            'char', 'bytes', 'list', 'dict', 'set', 'tuple'
+        }
+        if node.name in reserved_types:
+            raise lunite_error("Function Definition", f"Cannot override built-in type constructor '{node.name}'", node.line, node.col)
+
         node.source_file = CURRENT_FILE
         self.env.define(node.name, node)
         return node
@@ -2712,7 +2680,7 @@ class Interpreter:
     def visit_TypeCheckOp(self, node):
         val = self.visit(node.expr)
         
-        target = node.target
+        target = node.target_type
         type_name = ""
         
         if isinstance(target, Identifier):
@@ -2730,8 +2698,17 @@ class Interpreter:
         
         if isinstance(val, LuniteInstance):
             if isinstance(target, Identifier):
-                return val.mold.name == type_name
-                # TODO: Check inheritance tree for 'is'
+                curr_def = val.mold
+                while curr_def:
+                    if curr_def.name == type_name:
+                        return True
+                    
+                    if curr_def.superclass:
+                        curr_def = self.env.get(curr_def.superclass, node.line, node.col)
+                        if not isinstance(curr_def, ClassDef):
+                            break
+                    else:
+                        break
                 
         return False
 
@@ -2745,12 +2722,7 @@ class Interpreter:
                 members['fields'].update(super_members['fields'])
                 members['methods'].update(super_members['methods'])
             else:
-                raise lunite_error(
-                    "Class",
-                    f"Superclass {class_def.superclass} is not a valid class",
-                    class_def.line,
-                    class_def.col
-                )
+                raise lunite_error("Class", f"Superclass {class_def.superclass} is not a valid class", class_def.line, class_def.col)
 
         prev_env = self.env
         class_env = Environment(self.global_env)
@@ -2899,12 +2871,7 @@ class Interpreter:
         except Exception:
             pass
 
-        raise lunite_error(
-            "Member",
-            f"Property '{node.member_name}' does not exist on type '{type(obj).__name__}'",
-            node.line,
-            node.col
-        )
+        raise lunite_error("Member", f"Property '{node.member_name}' does not exist on type '{type(obj).__name__}'", node.line, node.col)
 
     def visit_IndexAccess(self, node):
         target = self.visit(node.target)
@@ -2912,26 +2879,21 @@ class Interpreter:
         try:
             return target[index]
         except KeyError:
-            raise lunite_error(
-                "Key",
-                f"Key '{index}' not found in dictionary",
-                node.line,
-                node.col
-            )
+            raise lunite_error("Key", f"Key '{index}' not found in dictionary", node.line, node.col)
         except IndexError:
-            raise lunite_error(
-                "Index",
-                f"Index '{index}' out of bounds",
-                node.line,
-                node.col
-            )
+            raise lunite_error("Index", f"Index '{index}' out of bounds", node.line, node.col)
         except Exception as e:
-            raise lunite_error(
-                "Index",
-                f"Invalid access operation: {str(e)}",
-                node.line,
-                node.col
-            )
+            raise lunite_error("Index", f"Invalid access operation: {str(e)}", node.line, node.col)
+
+    def visit_SliceAccess(self, node):
+        target = self.visit(node.target)
+        start = self.visit(node.start) if node.start else None
+        end = self.visit(node.end) if node.end else None
+        
+        try:
+            return target[start:end]
+        except Exception as e:
+            raise lunite_error("Slice", str(e), node.line, node.col)
         
     def visit_ImportPyStatement(self, node):
         ctx_dir = os.path.dirname(os.path.abspath(CURRENT_FILE)) if CURRENT_FILE != "REPL" else os.getcwd()
@@ -2988,19 +2950,9 @@ class Interpreter:
     def visit_DestructuringDecl(self, node):
         val = self.visit(node.value)
         if not hasattr(val, '__getitem__') or not hasattr(val, '__len__'):
-            raise lunite_error(
-                "Destructuring",
-                "Value is not iterable",
-                node.line,
-                node.col
-            )
+            raise lunite_error("Destructuring", "Value is not iterable", node.line, node.col)
         if len(val) < len(node.names):
-            raise lunite_error(
-                "Destructuring",
-                f"Not enough values to unpack (expected {len(node.names)}, got {len(val)})",
-                node.line,
-                node.col
-            )
+            raise lunite_error("Destructuring", f"Not enough values to unpack (expected {len(node.names)}, got {len(val)})", node.line, node.col)
         for i, name in enumerate(node.names):
             self.env.define(name, val[i], is_const=node.is_const)
         return val

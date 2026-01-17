@@ -14,3 +14,4 @@ This changelog is from version 1.8.0 onwards. v1.0.0 to v1.8.0 were during the l
 *   **1.8.9** - Added `finally` block to attempt-rescue, fixes fstrings and error handling
 *   **1.9.0** - Added less than or equal to operator `<=`, greater than or equal to operator `>=` and major bug fixes
 *   **1.9.1** - Bug fixing, `range(1, n)` now returns a list upto `n` rather than `n - 1`. Semicolons. Re-wrote STD LIB. New docs page.
+*   **1.9.2** - Fixed TypeCheck operator code, fixed 4 edge cases, added func call stack tracing, added `list(num, "typehint")`, fixed `visit_FunctionDef()` to prevent making functions with datatype constructor names, refactored `lunite_error()` calls
