@@ -7,7 +7,6 @@
 echo "Lunite Builder Bash Script"
 echo "--------------------------"
 
-# 1. Detect Python Interpreter
 if [ -f "./venv/bin/python" ]; then
     PY_BIN="./venv/bin/python"
     echo "[!] Virtual Environment Detected: ./venv"

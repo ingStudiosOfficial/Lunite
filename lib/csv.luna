@@ -1,16 +1,16 @@
 ~~ Lunite Library
 ~~ Simple CSV Parser
-~~ v1.0 by ANW
+~~ v1.1 by ANW
 
 class CSV {
     func parse(content) {
         let rows = []
-        let lines = split(content, "\n")
+        let lines = String.split(content, "\n")
         
         for line in lines {
-            let trimmed = trim(line)
+            let trimmed = String.trim(line)
             if (len(trimmed) > 0) {
-                let cols = split(trimmed, ",")
+                let cols = String.split(trimmed, ",")
                 rows.append(cols)
             }
         }
@@ -18,19 +18,19 @@ class CSV {
     }
     
     func read(path) {
-        let content = read_file(path)
-        if (content == null) {
-            return []
+        if (File.exists(path)) {
+            let content = File.read(path)
+            return this.parse(content)
         }
-        return this.parse(content)
+        return []
     }
 
     func stringify(rows) {
         let lines = []
         for row in rows {
-            let line = join(row, ",")
+            let line = String.join(row, ",")
             lines.append(line)
         }
-        return join(lines, "\n")
+        return String.join(lines, "\n")
     }
 }

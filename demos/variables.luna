@@ -1,0 +1,18 @@
+~~ this is how you make vars in Lunite:
+let a = 4
+let b = 2
+let c = "Hello, World!"
+
+~~ this is a constant value, which cannot be changed
+let const pi = 3.1415926
+
+let d = a * b
+out(c)
+out(d)
+out(pi)
+
+attempt {
+    pi = 4; ~~ this will not work
+} rescue(e) {
+    out("Exception caught: " + str(e))
+}

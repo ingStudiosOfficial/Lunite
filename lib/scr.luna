@@ -1,0 +1,10 @@
+~~ Lunite Library
+~~ Screen Library
+~~ v1.1 by ANW
+
+class Screen {
+    func clear() {
+        let cmd = (Sys.os() == "Windows") ? "cls" : "clear"
+        Sys.cmd(cmd)
+    }
+}

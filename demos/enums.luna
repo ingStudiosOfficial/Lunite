@@ -1,0 +1,32 @@
+~~ enums are used to mask numbers or statuses with textual variables.
+~~ the values start from 0 and increment by one.
+~~ inspired by: C++
+
+enum status {
+    online,
+    idle,
+    dnd,
+    offline
+}
+
+out(status.online)  ~~ 0
+out(status.idle)    ~~ 1
+out(status.dnd)     ~~ 2
+out(status.offline) ~~ 3
+
+out("")  ~~ blank line for demonstration
+
+~~ you can use these in scenarios such as the one below.
+let users = [
+    {"name": "ANW", "status": status.online},
+    {"name": "John Doe", "status": status.dnd}
+]
+
+for user in users {
+    out(user)
+    if (user["status"] == status.online) {
+        out(user["name"] + " is online!")
+    } else {
+        out(user["name"] + " is not online.")
+    }
+}

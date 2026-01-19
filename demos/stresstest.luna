@@ -59,7 +59,7 @@ out(f"    Last Mag: {Math.round(objects[obj_count-1].mag())}")
 out(f"    Time: {Math.round((t6 - t5) * 1000)} ms")
 
 ~~ test 4 - string concat and loop
-out("\n[4] String Operations...")
+out("\n[4] Massive String Concatenation...")
 let t7 = Time.now()
 let s = ""
 let limit = 5000

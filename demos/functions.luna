@@ -1,0 +1,16 @@
+let a = false
+let b = false
+
+~~ this is a function in Lunite.
+func greet(name) {
+    if (name == "John") {
+        out("Hi John!")
+        return true
+    } else {
+        out(f"GET OUT {String.upper(name)}.")
+        return false
+    }
+}
+
+a = greet("John")
+b = greet("Jane")

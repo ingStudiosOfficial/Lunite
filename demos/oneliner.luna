@@ -1,0 +1,1 @@
+let b="";let p=0;let d=0;let a=0;func i(){b=in("Enter book name: ","str");p=in("Enter price: ","float")};func c(){if(p<=1000){d=p*(2/100)}else if(p>1000&&p<=3000){d=p*(10/100)}else{d=p*(15/100)};a=p-d};func s(){out(f"Name: {b}\nPrice: Rs. {str(p)}\nDiscount: Rs. {str(d)}\nAmount: Rs. {str(a)}")};i();c();s()

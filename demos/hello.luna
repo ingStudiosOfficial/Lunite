@@ -1,0 +1,3 @@
+~~ this is how you print a hello world message in Lunite.
+
+out("Hello, World!")

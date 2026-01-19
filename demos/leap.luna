@@ -1,0 +1,16 @@
+~~ leap can be used to jump to a particular line number or label.
+~~ inspired by: Basic
+
+let loop = 0
+
+{MyLabel}
+loop += 1
+out(loop)
+
+if (loop == 10) {
+    leap 16 ~~ jumps to line 16
+}
+
+leap MyLabel ~~ jumps to the label "MyLabel"
+
+out("Finished looping!")

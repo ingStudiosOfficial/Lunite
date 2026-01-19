@@ -1,0 +1,39 @@
+~~ along side POP, Lunite also has OOP features.
+~~ inspired by: Java and Python
+
+class Book {
+    let book_name = ""
+    let price     = 0.0
+    let discount  = 0.0
+    let amount    = 0.0
+
+    func input() {
+        this.book_name = in("Enter book name: ", "str")
+        this.price     = in("Enter price: ", "float")
+    }
+
+    func calculate() {
+        if (this.price <= 1000.0) {
+            this.discount = this.price * (2.0 / 100.0)
+        } else if (this.price > 1000.0 and this.price <= 3000.0) {
+            this.discount = this.price * (10.0 / 100.0)
+        } else if (this.price > 3000.0) {
+            this.discount = this.price * (15.0 / 100.0)
+        }
+
+        this.amount = this.price - this.discount
+    }
+
+    func display() {
+        out("Name: " + this.book_name)
+        out("Price: Rs. " + str(this.price))
+        out("Discount: Rs. " + str(this.discount))
+        out("Amount: Rs. " + str(this.amount))
+    }
+}
+
+let book = new Book()
+book.input()
+book.calculate()
+out("")
+book.display()

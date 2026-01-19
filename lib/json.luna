@@ -1,24 +1,26 @@
 ~~ Lunite Library
 ~~ JSON Wrapper Library
-~~ v1.0 by ANW
+~~ v1.1 by ANW
 
-class JSON {
+class JsonHelper {
     func parse(text) {
-        return json_decode(text)
+        return Json.decode(text)
     }
     
     func stringify(data) {
-        return json_encode(data)
+        return Json.encode(data)
     }
     
     func read(path) {
-        let content = read_file(path)
-        if (content == null) { return null }
-        return this.parse(content)
+        if (File.exists(path)) {
+            let content = File.read(path)
+            return this.parse(content)
+        }
+        return null
     }
     
     func write(path, data) {
         let text = this.stringify(data)
-        write_file(path, text)
+        File.write(path, text)
     }
 }

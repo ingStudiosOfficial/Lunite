@@ -1,19 +1,21 @@
 ~~ Lunite Library
 ~~ DateTime Library
-~~ v1.0 by ANW
+~~ v1.1 by ANW
 
 class DateTime {
     let ts = 0
     let data = null
 
     func now() {
-        this.ts = time()
-        this.data = date_struct(this.ts)
+        this.ts = Time.now()
+        this.data = Time.struct(this.ts)
+        return this
     }
 
     func from_timestamp(timestamp) {
         this.ts = timestamp
-        this.data = date_struct(timestamp)
+        this.data = Time.struct(timestamp)
+        return this
     }
 
     func year() { return this.data["year"] }

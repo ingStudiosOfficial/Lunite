@@ -29,7 +29,6 @@ echo If you do not wish to continue, press CTRL+C now.
 echo Press any key to continue...
 pause >nul
 
-:: 2. Pre-flight Checks
 if not exist "lunite.py" (
     echo [x] Error: 'lunite.py' not found in current directory.
     goto :End

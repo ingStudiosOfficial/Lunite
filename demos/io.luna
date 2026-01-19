@@ -1,0 +1,33 @@
+~~ IO is made very simple in Lunite:
+~~ you have 'in()' for input, 'out()' for output. neat, aint it?
+
+let name = ""
+let age = 0
+
+name = in("Enter your name: ", "str")
+age = in("Enter your age: ", "int")
+
+func adult(age) {
+    return (age >= 18)
+}
+
+out(f"\nHi {name}!")
+if (adult(age)) {
+    out("You are an adult.")
+} else {
+    out("You are a minor.")
+}
+
+~~ but... if you dislike the naming, you could always make a wrapper lambda
+~~ say you wanted it to be similar to Python:
+
+let input = (x, y) => in(x, y)
+let print = (x) => out(x)
+
+let pl = input("What is your favourite programming language? > ", "str")
+
+if (String.lower(pl) == "lunite") {
+    print("Good choice~")
+} else {
+    print(f"{pl} is a cool language!")
+}

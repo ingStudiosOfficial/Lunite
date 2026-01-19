@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # /== == == == == == == == == == ==\
-# |==  LUNITE - v1.9.3 - by ANW  ==|
+# |==  LUNITE - v1.9.4 - by ANW  ==|
 # \== == == == == == == == == == ==/
 
 import sys
@@ -30,16 +30,16 @@ except ImportError:
 # VERSION & CONFIG
 # ==========================================
 
-LUNITE_VERSION_STR = "v1.9.3"
+LUNITE_VERSION_STR = "v1.9.4"
 COPYRIGHT          = "Copyright ANW, 2025-2026"
-LUNITE_USER_AGENT  = "Lunite/1.9.3"
+LUNITE_USER_AGENT  = "Lunite/1.9.4"
 CURRENT_FILE       = "REPL"
 
 # ==========================================
 # PRE-COMPILED REGEX
 # ==========================================
 
-RE_NUMBER = re.compile(r'\d+(\.\d+)?')
+RE_NUMBER = re.compile(r'(\d+(\.\d*)?|\.\d+)')
 RE_ID     = re.compile(r'[a-zA-Z_]\w*')
 
 # ==========================================
@@ -311,6 +311,9 @@ class Lexer:
                 s += self.current_char
             
             self.advance()
+
+        if self.current_char is None:
+            raise lunite_error("Syntax", "Unterminated string literal", start_line, start_col)
             
         self.advance()
         
@@ -334,7 +337,7 @@ class Lexer:
             char = self.current_char
             
             if char == '"' and brace_depth == 0:
-                self.advance() # consume closing quote
+                self.advance()
                 return Token(TOKEN_FSTRING, raw_s, start_line, start_col)
             
             if char == '{':
@@ -343,7 +346,6 @@ class Lexer:
                 if brace_depth > 0: brace_depth -= 1
             
             if char == '\\':
-                # Capture escape sequence raw
                 raw_s += char
                 self.advance()
                 if self.current_char is not None:
@@ -902,6 +904,9 @@ class Parser:
             self.eat(TOKEN_FSTRING)
             
             raw_val = token.value
+            if not raw_val:
+                return String(Token(TOKEN_STRING, "", token.line, token.col))
+            
             parts = []
             current_str = ""
             depth = 0
@@ -2239,7 +2244,7 @@ class Interpreter:
                             found = True
                             break
                     elif isinstance(target, int):
-                        if s.line == target:
+                        if s.line >= target:
                             i = idx
                             found = True
                             break
@@ -2323,15 +2328,25 @@ class Interpreter:
         right = self.visit(node.right)
 
         # Math
-        if op == TOKEN_PLUS: return left + right
-        if op == TOKEN_MINUS: return left - right
-        if op == TOKEN_MUL: return left * right
-        if op == TOKEN_DIV: return left / right
-        if op == TOKEN_MOD: 
-            val = math.fmod(left, right)
-            if isinstance(left, int) and isinstance(right, int):
-                return int(val)
-            return val
+        try:
+            if op == TOKEN_PLUS: return left + right
+            if op == TOKEN_MINUS: return left - right
+            if op == TOKEN_MUL: return left * right
+            if op == TOKEN_DIV: return left / right
+            if op == TOKEN_MOD: 
+                val = math.fmod(left, right)
+                if isinstance(left, int) and isinstance(right, int):
+                    return int(val)
+                return val
+        except TypeError:
+            raise lunite_error(
+                "Type", 
+                f"Unsupported operand types for '{op}': '{type(left).__name__}' and '{type(right).__name__}'", 
+                node.line, 
+                node.col
+            )
+        except ZeroDivisionError:
+             raise lunite_error("Math", "Division by zero", node.line, node.col)
         
         # Bitwise
         if op == TOKEN_BIT_AND: return left & right
@@ -2875,6 +2890,8 @@ class Interpreter:
                 try:
                     pos_args, kw_args = self._evaluate_arguments(node.args)
                     return py_method(*pos_args, **kw_args)
+                except IndexError:
+                    raise lunite_error("Index", "List index out of range", node.line, node.col)
                 except Exception as e:
                     raise lunite_error("Interop", str(e), node.line, node.col)
         
@@ -2955,7 +2972,17 @@ class Interpreter:
     
     def visit_SetLiteral(self, node):
         elements = [self.visit(e) for e in node.elements]
-        return set(elements)
+        try:
+            return set(elements)
+        except TypeError as e:
+            if "unhashable" in str(e):
+                raise lunite_error(
+                    "Type",
+                    "Sets cannot contain mutable objects (like dicts or lists). Did you mean to use a List '[...]' instead of a Set '{...}'?",
+                    node.line,
+                    node.col
+                )
+            raise lunite_error("Runtime", str(e), node.line, node.col)
 
     def visit_TupleLiteral(self, node):
         elements = [self.visit(e) for e in node.elements]

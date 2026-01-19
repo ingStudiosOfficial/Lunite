@@ -1,0 +1,13 @@
+~~ a lambda is a quick way to make a small function:.
+~~ inspired by: Python
+
+let sum = (x, y) => x + y
+let print = (x) => out(x)
+
+print(sum(4, 2))
+
+~~ you can also nest lambdas:
+let double = (x) => 2 * x
+let twice = (x) => double(x)
+
+print(twice(33.5))
