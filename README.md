@@ -23,6 +23,10 @@ The `stable` branch has been created. It will begin getting commits after Lunite
 📘 **Documentation**  
 👉 [Click here to read the official Lunite documentation](https://verbena-dream-15b.notion.site/Lunite-Docs-2e947befe6ac80b8bba0c5cca9c6aeb1)
 
+📢 **Shout Out**  
+Shout out to **Crabby**, a modern programming language made in Rust by Kazooki123 (Starlo)! 💜  
+👉 [Click here to visit the Crabby repository](https://github.com/crabby-lang/crabby/)
+
 🌐 **Author & Contact**  
 Visit **[https://anw.is-a.dev](https://anw.is-a.dev)** for more information about the author.
 If you’d like to get in touch, please find contact details directly on that page.
