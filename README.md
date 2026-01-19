@@ -15,7 +15,9 @@
 
 Lunite is a modern **hybrid programming language** that blends **Object-Oriented Programming (OOP)** and **Procedural-Oriented Programming (POP)** paradigms.  
 It supports both **interpreted execution** and **compiled ("binded") workflows**, and is built **on top of Python** for flexibility, power, and rapid development.  
-Lunite now has a guide on how to transpile its interpreter into C++ for even better (2 to 3 times faster) performance! Check it out in the documentation.
+
+> [!IMPORTANT]
+> Lunite now has a guide on how to transpile its interpreter into C++ for even better (2 to 3 times faster) performance! Check it out in the documentation.
 
 ✅ **Stable Branch**  
 The `stable` branch has been created. It will begin getting commits after Lunite v2.0.0.  
