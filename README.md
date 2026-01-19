@@ -37,6 +37,10 @@ Shout out to **Crabby**, a modern programming language made in Rust by my friend
 Visit **[https://anw.is-a.dev](https://anw.is-a.dev)** for more information about the author.
 If you’d like to get in touch, please find contact details directly on that page.
 
+🤝 **Colaborators List**
+*   **(ing) Studios:** "The Lunite Programming Language" VS Code extension publisher
+*   **Douxx:** First issue, about using the Python binary in a venv if a venv exists
+
 ---
 
 <div align="center">
