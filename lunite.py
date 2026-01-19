@@ -2045,10 +2045,14 @@ class Interpreter:
             def randint(a, b): return random.randint(a, b)
             
             @staticmethod
-            def max(a, b): return max(a, b)
+            def max(*args): 
+                if not args: return 0
+                return max(*args)
             
             @staticmethod
-            def min(a, b): return min(a, b)
+            def min(*args): 
+                if not args: return 0
+                return min(*args)
         
         math_obj = LuniteInstance(ClassDef("Math", Block([]), None))
         math_wrapper = MathWrapper()
@@ -2136,7 +2140,7 @@ class Interpreter:
             return [default_val] * count
 
         self.global_env.define('list', create_list_impl)
-        self.global_env.define('range', lambda a, b: list(range(a, b + 1)))
+        self.global_env.define('range', lambda a, b: list(range(int(a), int(b) + 1)))
         self.global_env.define('str', lambda x: clean_str(x))
         self.global_env.define('int', lambda x: int(x))
         self.global_env.define('float', lambda x: float(x))
