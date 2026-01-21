@@ -128,7 +128,7 @@
       "patterns": [
         {
           "name": "keyword.control.luna",
-          "match": "\\b(if|else|while|for|in|return|break|advance|leap|attempt|rescue|finally|match|other|import|import_py|from)\\b"
+          "match": "\\b(if|else|while|for|in|return|break|advance|leap|attempt|rescue|finally|match|other|import|import_py|from|assert)\\b"
         },
         {
           "name": "variable.language.this.luna",
@@ -195,7 +195,7 @@
       "patterns": [
         {
           "name": "keyword.operator.luna",
-          "match": "\\+|-|\\*|/|%|==|!=|<|>|<=|>=|=|!|&|\\||\\^|~|<<|>>|\\?|:|=>|;"
+          "match": "\\+\\+|--|<<|>>|==|!=|<=|>=|=>|&&|\\|\\||\\+=|-=|\\*=|/=|%=|\\+|-|\\*|/|%|=|\\.|<|>|!|&|\\||\\^|~|\\?|:|;"
         }
       ]
     }

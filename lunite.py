@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # /== == == == == == == == == == ==\
-# |==  LUNITE - v1.9.4 - by ANW  ==|
+# |==  LUNITE - v1.9.5 - by ANW  ==|
 # \== == == == == == == == == == ==/
 
 import sys
@@ -16,6 +16,8 @@ import datetime
 import math
 import time
 import random
+import base64
+import hashlib
 from dataclasses import dataclass, field
 from typing import Any, List, Dict, Optional, Tuple, Set
 try:
@@ -30,9 +32,9 @@ except ImportError:
 # VERSION & CONFIG
 # ==========================================
 
-LUNITE_VERSION_STR = "v1.9.4"
+LUNITE_VERSION_STR = "v1.9.5"
 COPYRIGHT          = "Copyright ANW, 2025-2026"
-LUNITE_USER_AGENT  = "Lunite/1.9.4"
+LUNITE_USER_AGENT  = "Lunite/1.9.5"
 CURRENT_FILE       = "REPL"
 
 # ==========================================
@@ -129,6 +131,8 @@ TOKEN_FSTRING  = 'FSTRING'
 TOKEN_ARROW    = 'ARROW'
 TOKEN_IS       = 'IS'
 TOKEN_SEMI     = 'SEMI'
+TOKEN_INC      = 'INC'
+TOKEN_DEC      = 'DEC'
 
 # ==========================================
 # KEYWORDS LIST
@@ -139,7 +143,7 @@ KEYWORDS = [
     'return', 'new', 'true', 'false', 'null', 'import',
     'attempt', 'rescue', 'finally', 'extends', 'break', 'advance', 'leap',
     'match', 'other', 'and', 'or', 'not', 'const', 'import_py',
-    'enum', 'is', 'from'
+    'enum', 'is', 'from', 'assert'
 ]
 
 # ==========================================
@@ -447,6 +451,9 @@ class Lexer:
             
             if self.current_char == '+':
                 self.advance()
+                if self.current_char == '+':
+                    self.advance()
+                    return Token(TOKEN_INC, '++', self.line, start_col)
                 if self.current_char == '=':
                     self.advance()
                     return Token(TOKEN_PLUSEQ, '+=', self.line, start_col)
@@ -454,6 +461,9 @@ class Lexer:
 
             if self.current_char == '-':
                 self.advance()
+                if self.current_char == '-':
+                    self.advance()
+                    return Token(TOKEN_DEC, '--', self.line, start_col)
                 if self.current_char == '=':
                     self.advance()
                     return Token(TOKEN_MINUSEQ, '-=', self.line, start_col)
@@ -756,6 +766,17 @@ class SliceAccess(AST):
     target: AST
     start: Optional[AST]
     end: Optional[AST]
+
+@dataclass
+class AssertStatement(AST):
+    condition: AST
+    message: Optional[AST]
+
+@dataclass
+class UpdateExpr(AST):
+    target: AST
+    op: Token
+    is_prefix: bool
 
 # ==========================================
 # PARSER
@@ -1183,9 +1204,15 @@ class Parser:
     def factor(self):
         token = self.current_token
         
-        if token.type in (TOKEN_PLUS, TOKEN_MINUS, TOKEN_BIT_NOT, TOKEN_NOT):
+        if token.type in (TOKEN_PLUS, TOKEN_MINUS, TOKEN_BIT_NOT, TOKEN_NOT, TOKEN_INC, TOKEN_DEC):
             self.eat(token.type)
-            node = UnaryOp(op=token, expr=self.factor())
+            
+            if token.type in (TOKEN_INC, TOKEN_DEC):
+                target = self.factor()
+                node = UpdateExpr(target, token, True)
+            else:
+                node = UnaryOp(op=token, expr=self.factor())
+                
             node.line = token.line
             node.col = token.col
             return node
@@ -1241,6 +1268,13 @@ class Parser:
                     node.line = token.line
                     node.col = token.col
         
+        if self.current_token.type in (TOKEN_INC, TOKEN_DEC):
+            op_token = self.current_token
+            self.eat(op_token.type)
+            node = UpdateExpr(node, op_token, False) # False = Postfix
+            node.line = op_token.line
+            node.col = op_token.col
+
         return node
 
     def term(self):
@@ -1435,8 +1469,15 @@ class Parser:
 
             var_name = self.current_token.value
             self.eat(TOKEN_ID)
-            self.eat(TOKEN_ASSIGN)
-            val = self.expr()
+            
+            if self.current_token.type == TOKEN_ASSIGN:
+                self.eat(TOKEN_ASSIGN)
+                val = self.expr()
+            else:
+                val = Null()
+                val.line = token.line
+                val.col = token.col
+
             node = VarDecl(var_name, val, is_const)
             node.line = token.line
             node.col = token.col
@@ -1710,6 +1751,21 @@ class Parser:
             node.col = token.col
             return node
 
+        elif token.type == TOKEN_KEYWORD and token.value == 'assert':
+            self.eat(TOKEN_KEYWORD)
+            self.eat(TOKEN_LPAREN)
+            cond = self.expr()
+            msg = None
+            if self.current_token.type == TOKEN_COMMA:
+                self.eat(TOKEN_COMMA)
+                msg = self.expr()
+            self.eat(TOKEN_RPAREN)
+            
+            node = AssertStatement(cond, msg)
+            node.line = token.line
+            node.col = token.col
+            return node
+
         else:
             expr_node = self.expr()
             
@@ -1844,107 +1900,91 @@ class Interpreter:
     def setup_std_lib(self):
         def clean_str(val):
             if isinstance(val, bool): return "true" if val else "false"
-            if isinstance(val, float): return f"{val:.12g}"
+            if isinstance(val, float): 
+                if val.is_integer(): return str(int(val))
+                return f"{val:.12g}"
             if val is None: return "null"
             if isinstance(val, (bytes, bytearray)): return f"<Bytes len={len(val)}>"
             if isinstance(val, (set, tuple)): return str(val)
             return str(val)
 
-        # --- IO (Enhanced) ---
-        self.global_env.define('out', lambda x: print(clean_str(x)))
-        
-        def lunite_input(prompt, type_hint="string"):
-            text = input(clean_str(prompt))
-            
-            try:
-                if type_hint == "int": return int(text)
-                if type_hint == "float": return float(text)
-                if type_hint == "bool": return text.lower() in ("true", "1", "yes", "on")
-                if type_hint == "bit": return LBit(text)
-                if type_hint == "byte": return LByte(text)
-                if type_hint == "char": return LChar(text)
-                return text
-            except ValueError:
-                raise lunite_error("STD LIB Input", f"Failed to convert '{text}' to type {type_hint}")
-                
-        self.global_env.define('in', lunite_input)
-        
-        # --- File IO ---
+        def make_static_lib(name, wrapper_cls, fields=None):
+            obj = LuniteInstance(ClassDef(name, Block([]), None))
+            for method in dir(wrapper_cls):
+                if not method.startswith('__'):
+                    obj.methods[method] = getattr(wrapper_cls, method)
+            if fields:
+                for k, v in fields.items():
+                    obj.fields[k] = v
+            self.global_env.define(name, obj)
+
+        # [ Static Libraries ]
+
+        # --- File IO & System ---
         class FileWrapper:
             @staticmethod
             def read(path):
                 try:
-                    with open(path, 'r') as f: return f.read()
-                except Exception as e:
-                    raise lunite_error("STD LIB File Read", str(e))
-            
+                    with open(path, 'r', encoding='utf-8') as f: return f.read()
+                except Exception as e: raise lunite_error("File", str(e))
             @staticmethod
             def write(path, content):
                 try:
-                    with open(path, 'w') as f: f.write(clean_str(content))
-                except Exception as e:
-                    raise lunite_error("STD LIB File Write", str(e))
-            
+                    with open(path, 'w', encoding='utf-8') as f: f.write(clean_str(content))
+                except Exception as e: raise lunite_error("File", str(e))
+            @staticmethod
+            def append(path, content):
+                try:
+                    with open(path, 'a', encoding='utf-8') as f: f.write(clean_str(content))
+                except Exception as e: raise lunite_error("File", str(e))
             @staticmethod
             def read_bytes(path):
                 try:
                     with open(path, 'rb') as f: return f.read()
                 except Exception as e: return None
-            
             @staticmethod
             def write_bytes(path, data):
                 try:
                     if isinstance(data, str): data = data.encode('utf-8')
                     with open(path, 'wb') as f: f.write(data)
-                except Exception as e:
-                    raise lunite_error("STD LIB File Write Bytes", str(e))
-            
+                except Exception as e: raise lunite_error("File", str(e))
             @staticmethod
             def exists(p): return os.path.exists(str(p))
-            
             @staticmethod
-            def mkdir(p): os.mkdir(str(p))
-            
+            def is_file(p): return os.path.isfile(str(p))
+            @staticmethod
+            def is_dir(p): return os.path.isdir(str(p))
+            @staticmethod
+            def mkdir(p): os.makedirs(str(p), exist_ok=True)
             @staticmethod
             def rmdir(p): os.rmdir(str(p))
-            
             @staticmethod
             def remove(p): os.remove(str(p))
-            
             @staticmethod
             def list(p): return os.listdir(str(p))
-            
             @staticmethod
-            def join(a, b): return os.path.join(str(a), str(b))
-            
+            def join(*args): return os.path.join(*(str(a) for a in args))
+            @staticmethod
+            def abs(p): return os.path.abspath(str(p))
+            @staticmethod
+            def base(p): return os.path.basename(str(p))
+            @staticmethod
+            def ext(p): return os.path.splitext(str(p))[1]
+            @staticmethod
+            def size(p): return os.path.getsize(str(p))
             @staticmethod
             def cwd(): return os.getcwd()
-
-        file_obj = LuniteInstance(ClassDef("File", Block([]), None))
-        file_wrapper = FileWrapper()
-        file_obj.methods['read'] = lambda p: file_wrapper.read(p)
-        file_obj.methods['write'] = lambda p, c: file_wrapper.write(p, c)
-        file_obj.methods['read_bytes'] = lambda p: file_wrapper.read_bytes(p)
-        file_obj.methods['write_bytes'] = lambda p, d: file_wrapper.write_bytes(p, d)
-        file_obj.methods['exists'] = lambda p: file_wrapper.exists(p)
-        file_obj.methods['mkdir'] = lambda p: file_wrapper.mkdir(p)
-        file_obj.methods['rmdir'] = lambda p: file_wrapper.rmdir(p)
-        file_obj.methods['remove'] = lambda p: file_wrapper.remove(p)
-        file_obj.methods['list'] = lambda p: file_wrapper.list(p)
-        file_obj.methods['join'] = lambda a, b: file_wrapper.join(a, b)
-        file_obj.methods['cwd'] = lambda: file_wrapper.cwd()
-        self.global_env.define('File', file_obj)
+        
+        make_static_lib("File", FileWrapper)
 
         # --- Network ---
         class NetWrapper:
             @staticmethod
             def get(url):
                 try:
-                    with urllib.request.urlopen(url) as response:
-                        return response.read().decode('utf-8')
-                except Exception as e:
-                    raise lunite_error("STD LIB Net GET", str(e))
-            
+                    req = urllib.request.Request(url, headers={'User-Agent': LUNITE_USER_AGENT})
+                    with urllib.request.urlopen(req) as r: return r.read().decode('utf-8')
+                except Exception as e: raise lunite_error("Net", str(e))
             @staticmethod
             def post(url, data):
                 try:
@@ -1955,121 +1995,98 @@ class Interpreter:
                         payload = clean_str(data).encode('utf-8')
                         headers = {'User-Agent': LUNITE_USER_AGENT}
                     req = urllib.request.Request(url, data=payload, headers=headers, method='POST')
-                    with urllib.request.urlopen(req) as response:
-                        return response.read().decode('utf-8')
-                except Exception as e:
-                    raise lunite_error("STD LIB Net POST", str(e))
+                    with urllib.request.urlopen(req) as r: return r.read().decode('utf-8')
+                except Exception as e: raise lunite_error("Net", str(e))
+            @staticmethod
+            def download(url, path):
+                try:
+                    urllib.request.urlretrieve(url, path)
+                except Exception as e: raise lunite_error("Net", str(e))
 
-        net_obj = LuniteInstance(ClassDef("Net", Block([]), None))
-        net_wrapper = NetWrapper()
-        net_obj.methods['get'] = lambda u: net_wrapper.get(u)
-        net_obj.methods['post'] = lambda u, d: net_wrapper.post(u, d)
-        self.global_env.define('Net', net_obj)
+        make_static_lib("Net", NetWrapper)
 
         class JsonWrapper:
             @staticmethod
-            def encode(o): return json.dumps(o)
-            
+            def encode(o): return json.dumps(o, default=str)
             @staticmethod
             def decode(s): return json.loads(s)
-
-        json_obj = LuniteInstance(ClassDef("Json", Block([]), None))
-        json_wrapper = JsonWrapper()
-        json_obj.methods['encode'] = lambda o: json_wrapper.encode(o)
-        json_obj.methods['decode'] = lambda s: json_wrapper.decode(s)
-        self.global_env.define('Json', json_obj)
+        
+        make_static_lib("Json", JsonWrapper)
 
         # --- System ---
         class SysWrapper:
             @staticmethod
             def cmd(c): return subprocess.getoutput(c)
-            
             @staticmethod
             def os(): return platform.system()
-            
+            @staticmethod
+            def arch(): return platform.machine()
             @staticmethod
             def args(): return sys.argv
-            
             @staticmethod
             def env(k): return os.environ.get(str(k), None)
-            
             @staticmethod
-            def exit(c=0):
-                sys.stdout.flush()
-                try: ec = int(c)
-                except: ec = 0
-                sys.exit(ec)
+            def set_env(k, v): os.environ[str(k)] = str(v)
+            @staticmethod
+            def exit(c=0): sys.exit(int(c))
+            @staticmethod
+            def version(): return LUNITE_VERSION_STR
 
-        sys_obj = LuniteInstance(ClassDef("Sys", Block([]), None))
-        sys_wrapper = SysWrapper()
-        sys_obj.methods['cmd'] = lambda c: sys_wrapper.cmd(c)
-        sys_obj.methods['os'] = lambda: sys_wrapper.os()
-        sys_obj.methods['args'] = lambda: sys_wrapper.args()
-        sys_obj.methods['env'] = lambda k: sys_wrapper.env(k)
-        sys_obj.methods['exit'] = lambda c=0: sys_wrapper.exit(c)
-        self.global_env.define('Sys', sys_obj)
+        make_static_lib("Sys", SysWrapper)
 
         # --- Math ---
         class MathWrapper:
             @staticmethod
             def sin(x): return math.sin(x)
-            
             @staticmethod
             def cos(x): return math.cos(x)
-            
             @staticmethod
             def tan(x): return math.tan(x)
-            
+            @staticmethod
+            def asin(x): return math.asin(x)
+            @staticmethod
+            def acos(x): return math.acos(x)
+            @staticmethod
+            def atan(x): return math.atan(x)
             @staticmethod
             def sqrt(x): return math.sqrt(x)
-            
             @staticmethod
             def pow(x, y): return math.pow(x, y)
-            
             @staticmethod
             def abs(x): return abs(x)
-
             @staticmethod
             def round(x): return round(x)
-            
             @staticmethod
             def floor(x): return math.floor(x)
-            
             @staticmethod
             def ceil(x): return math.ceil(x)
-            
+            @staticmethod
+            def log(x): return math.log(x)
+            @staticmethod
+            def log10(x): return math.log10(x)
+            @staticmethod
+            def rad(x): return math.radians(x)
+            @staticmethod
+            def deg(x): return math.degrees(x)
+            @staticmethod
+            def clamp(n, smallest, largest): return max(smallest, min(n, largest))
             @staticmethod
             def random(): return random.random()
-            
             @staticmethod
             def randint(a, b): return random.randint(a, b)
-            
             @staticmethod
-            def max(*args): 
-                if not args: return 0
-                return max(*args)
-            
+            def max(*args): return max(args) if args else 0
             @staticmethod
-            def min(*args): 
-                if not args: return 0
-                return min(*args)
+            def min(*args): return min(args) if args else 0
         
-        math_obj = LuniteInstance(ClassDef("Math", Block([]), None))
-        math_wrapper = MathWrapper()
-        for method in dir(MathWrapper):
-            if not method.startswith('__'):
-                math_obj.methods[method] = getattr(MathWrapper, method)
-        math_obj.fields['pi'] = math.pi
-        self.global_env.define('Math', math_obj)
+        make_static_lib("Math", MathWrapper, {'pi': math.pi, 'e': math.e, 'tau': math.tau, 'inf': math.inf})
 
         # --- Time ---
         class TimeWrapper:
             @staticmethod
             def now(): return time.time()
-            
             @staticmethod
             def sleep(s): time.sleep(s)
-            
             @staticmethod
             def struct(ts=None):
                 if ts is None: ts = time.time()
@@ -2077,69 +2094,146 @@ class Interpreter:
                 return {
                     "year": dt.year, "month": dt.month, "day": dt.day,
                     "hour": dt.hour, "minute": dt.minute, "second": dt.second,
-                    "weekday": dt.weekday()
+                    "weekday": dt.weekday(), "iso": dt.isoformat()
                 }
-        
-        time_obj = LuniteInstance(ClassDef("Time", Block([]), None))
-        time_wrapper = TimeWrapper()
-        time_obj.methods['now'] = lambda: time_wrapper.now()
-        time_obj.methods['sleep'] = lambda s: time_wrapper.sleep(s)
-        time_obj.methods['struct'] = lambda t=None: time_wrapper.struct(t)
-        self.global_env.define('Time', time_obj)
+            @staticmethod
+            def format(fmt="%Y-%m-%d %H:%M:%S"):
+                return datetime.datetime.now().strftime(fmt)
+
+        make_static_lib("Time", TimeWrapper)
 
         # --- String ---
         class StringWrapper:
             @staticmethod
             def upper(s): return clean_str(s).upper()
-            
             @staticmethod
             def lower(s): return clean_str(s).lower()
-            
             @staticmethod
             def trim(s): return clean_str(s).strip()
-            
             @staticmethod
             def replace(s, o, n): return clean_str(s).replace(clean_str(o), clean_str(n))
-            
             @staticmethod
             def split(s, d): return clean_str(s).split(clean_str(d))
-            
             @staticmethod
             def join(l, d): return clean_str(d).join([clean_str(i) for i in l])
+            @staticmethod
+            def starts_with(s, p): return clean_str(s).startswith(clean_str(p))
+            @staticmethod
+            def ends_with(s, p): return clean_str(s).endswith(clean_str(p))
+            @staticmethod
+            def includes(s, sub): return clean_str(sub) in clean_str(s)
+            @staticmethod
+            def index(s, sub): return clean_str(s).find(clean_str(sub))
+            @staticmethod
+            def is_alpha(s): return clean_str(s).isalpha()
+            @staticmethod
+            def is_digit(s): return clean_str(s).isdigit()
+            @staticmethod
+            def char_at(s, i): 
+                try: return LChar(clean_str(s)[int(i)])
+                except: return ""
 
-        str_obj = LuniteInstance(ClassDef("String", Block([]), None))
-        str_wrapper = StringWrapper()
-        str_obj.methods['upper'] = lambda s: str_wrapper.upper(s)
-        str_obj.methods['lower'] = lambda s: str_wrapper.lower(s)
-        str_obj.methods['trim'] = lambda s: str_wrapper.trim(s)
-        str_obj.methods['replace'] = lambda s, o, n: str_wrapper.replace(s, o, n)
-        str_obj.methods['split'] = lambda s, d: str_wrapper.split(s, d)
-        str_obj.methods['join'] = lambda l, d: str_wrapper.join(l, d)
-        self.global_env.define('String', str_obj)
+        make_static_lib("String", StringWrapper)
+        
+        # --- List Utils ---
+        class ListWrapper:
+            @staticmethod
+            def push(l, x): 
+                if isinstance(l, list): l.append(x); return l
+                raise lunite_error("Type", "Expected list")
+            @staticmethod
+            def pop(l, i=-1): 
+                if isinstance(l, list): return l.pop(i)
+                raise lunite_error("Type", "Expected list")
+            @staticmethod
+            def sort(l): 
+                if isinstance(l, list): l.sort(); return l
+                raise lunite_error("Type", "Expected list")
+            @staticmethod
+            def reverse(l): 
+                if isinstance(l, list): l.reverse(); return l
+                raise lunite_error("Type", "Expected list")
+            @staticmethod
+            def copy(l): 
+                if isinstance(l, list): return l.copy()
+                raise lunite_error("Type", "Expected list")
+            @staticmethod
+            def clear(l): 
+                if isinstance(l, list): l.clear()
+                raise lunite_error("Type", "Expected list")
+            @staticmethod
+            def contains(l, item):
+                 return item in l
+        
+        make_static_lib("List", ListWrapper)
 
-        # --- Global Intrinsics ---
-        def create_list_impl(n, hint="null"):
+        # --- Dictionary Utils ---
+        class DictWrapper:
+            @staticmethod
+            def keys(d): return list(d.keys()) if isinstance(d, dict) else []
+            @staticmethod
+            def values(d): return list(d.values()) if isinstance(d, dict) else []
+            @staticmethod
+            def items(d): return [[k, v] for k, v in d.items()] if isinstance(d, dict) else []
+            @staticmethod
+            def merge(d1, d2): 
+                if isinstance(d1, dict) and isinstance(d2, dict): return {**d1, **d2}
+                return d1
+        
+        make_static_lib("Dict", DictWrapper)
+
+        # --- Base64 ---
+        class Base64Wrapper:
+            @staticmethod
+            def encode(s): return base64.b64encode(str(s).encode('utf-8')).decode('utf-8')
+            @staticmethod
+            def decode(s): return base64.b64decode(str(s)).decode('utf-8')
+        
+        make_static_lib("Base64", Base64Wrapper)
+
+        # --- Hashing ---
+        class HashWrapper:
+            @staticmethod
+            def sha256(s): return hashlib.sha256(str(s).encode()).hexdigest()
+            @staticmethod
+            def md5(s): return hashlib.md5(str(s).encode()).hexdigest()
+        
+        make_static_lib("Hash", HashWrapper)
+
+        # --- Regex ---
+        class RegexWrapper:
+            @staticmethod
+            def match(p, s): return bool(re.match(p, s))
+            @staticmethod
+            def search(p, s): 
+                m = re.search(p, s)
+                return m.groups() if m else None
+            @staticmethod
+            def find_all(p, s): return re.findall(p, s)
+            @staticmethod
+            def replace(p, r, s): return re.sub(p, r, s)
+        
+        make_static_lib("Regex", RegexWrapper)
+
+        # [ Global Functions ]
+        
+        # --- IO ---
+        self.global_env.define('out', lambda x: print(clean_str(x)))
+        
+        def lunite_input(prompt, type_hint="string"):
+            text = input(clean_str(prompt))
             try:
-                count = int(n)
+                if type_hint == "int": return int(text)
+                if type_hint == "float": return float(text)
+                if type_hint == "bool": return text.lower() in ("true", "1", "yes", "on")
+                if type_hint == "bit": return LBit(text)
+                if type_hint == "byte": return LByte(text)
+                if type_hint == "char": return LChar(text)
+                return text
             except ValueError:
-                raise Exception("List size must be an integer")
+                raise lunite_error("Input", f"Failed to convert '{text}' to type {type_hint}")  
+        self.global_env.define('in', lunite_input)
 
-            default_val = None
-            
-            if hint == "int": default_val = 0
-            elif hint == "float": default_val = 0.0
-            elif hint == "bool": default_val = False
-            elif hint == "bit": default_val = LBit(0)
-            elif hint == "byte": default_val = LByte(0)
-            elif hint == "char": default_val = LChar('\0')
-            elif hint == "str": default_val = ""
-            
-            elif hint == "list": return [[] for _ in range(count)]
-            elif hint == "dict": return [{} for _ in range(count)]
-            
-            return [default_val] * count
-
-        self.global_env.define('list', create_list_impl)
         self.global_env.define('range', lambda a, b: list(range(int(a), int(b) + 1)))
         self.global_env.define('str', lambda x: clean_str(x))
         self.global_env.define('int', lambda x: int(x))
@@ -2148,6 +2242,20 @@ class Interpreter:
         self.global_env.define('byte', lambda x: LByte(x))
         self.global_env.define('char', lambda x: LChar(str(x)) if isinstance(x, (int, float)) else LChar(x))
         self.global_env.define('bytes', lambda lst: bytes(lst))
+        
+        def create_list_impl(n, hint="null"):
+            try: count = int(n)
+            except: raise Exception("List size must be an integer")
+            default_val = None
+            if hint == "int": default_val = 0
+            elif hint == "float": default_val = 0.0
+            elif hint == "bool": default_val = False
+            elif hint == "str": default_val = ""
+            elif hint == "list": return [[] for _ in range(count)]
+            elif hint == "dict": return [{} for _ in range(count)]
+            return [default_val] * count
+
+        self.global_env.define('list', create_list_impl)
         
         def get_type(x):
             if isinstance(x, LBit): return "Bit"
@@ -2163,40 +2271,11 @@ class Interpreter:
             if isinstance(x, tuple): return "Tuple"
             if isinstance(x, LuniteInstance): return x.mold.name
             if x is None: return "Null"
-            if type(x).__name__ == 'module': return "PyModule"
             return "Unknown"
     
         self.global_env.define('len', lambda x: len(x))
         self.global_env.define('type', get_type)
         self.global_env.define('raise', lambda msg: (_ for _ in ()).throw(Exception(msg)))
-
-        # --- Regex ---
-        class RegexWrapper:
-            @staticmethod
-            def match(pattern, string):
-                return bool(re.match(pattern, string))
-            
-            @staticmethod
-            def search(pattern, string):
-                m = re.search(pattern, string)
-                if m: return m.groups()
-                return None
-            
-            @staticmethod
-            def find_all(pattern, string):
-                return re.findall(pattern, string)
-            
-            @staticmethod
-            def replace(pattern, repl, string):
-                return re.sub(pattern, repl, string)
-
-        regex_obj = LuniteInstance(ClassDef("Regex", Block([]), None))
-        regex_wrapper = RegexWrapper()
-        regex_obj.methods['match'] = lambda p, s: regex_wrapper.match(p, s)
-        regex_obj.methods['search'] = lambda p, s: regex_wrapper.search(p, s)
-        regex_obj.methods['find_all'] = lambda p, s: regex_wrapper.find_all(p, s)
-        regex_obj.methods['replace'] = lambda p, r, s: regex_wrapper.replace(p, r, s)
-        self.global_env.define('Regex', regex_obj)
     
     def visit(self, node):
         node_type = type(node)
@@ -2397,14 +2476,42 @@ class Interpreter:
                 raise lunite_error("Assignment", "Cannot set a property on a non-instance", node.line, node.col)
         
         elif isinstance(node.left, IndexAccess):
-            target = self.visit(node.left.target)
-            index = self.visit(node.left.index)
+            indices = []
+            current_node = node.left
+            
+            while isinstance(current_node, IndexAccess):
+                indices.append(self.visit(current_node.index))
+                current_node = current_node.target
+            
+            current_context = self.visit(current_node)
+            indices.reverse()
+
+            for i in range(len(indices) - 1):
+                idx = indices[i]
+                
+                if isinstance(current_context, dict):
+                    if idx not in current_context:
+                        current_context[idx] = {}
+                    current_context = current_context[idx]
+                    
+                elif isinstance(current_context, list):
+                    try:
+                        current_context = current_context[idx]
+                    except IndexError:
+                        raise lunite_error("Index", f"Index '{idx}' is out of bounds (no list autovivification)", node.line, node.col)
+                    except TypeError:
+                         raise lunite_error("Type", f"Invalid list index type", node.line, node.col)
+                else:
+                    raise lunite_error("Type", f"Cannot index into type '{type(current_context).__name__}'", node.line, node.col)
+
+            final_index = indices[-1]
             try:
-                target[index] = val
+                current_context[final_index] = val
             except TypeError:
-                raise lunite_error("Assignment", "Target does not support index assignment", node.line, node.col)
+                raise lunite_error("Type", "Target container does not support item assignment", node.line, node.col)
             except IndexError:
-                raise lunite_error("Assignment", "Provided index is out of bounds", node.line, node.col)
+                raise lunite_error("Index", f"Index '{final_index}' is out of bounds", node.line, node.col)
+
         else:
             raise lunite_error("Assignment", "No such assignment target", node.line, node.col)
 
@@ -3008,6 +3115,45 @@ class Interpreter:
         for i, name in enumerate(node.names):
             self.env.define(name, val[i], is_const=node.is_const)
         return val
+
+    def visit_AssertStatement(self, node):
+        if not self.visit(node.condition):
+            msg = "Assertion failed"
+            if node.message:
+                msg = f"Assertion failed: {self.visit(node.message)}"
+            raise lunite_error("Assertion", msg, node.line, node.col)
+
+    def visit_UpdateExpr(self, node):
+        curr_val = 0
+        if isinstance(node.target, Identifier):
+            curr_val = self.env.get(node.target.token.value, node.line, node.col)
+        elif isinstance(node.target, MemberAccess):
+            obj = self.visit(node.target.obj)
+            curr_val = obj.get(node.target.member_name, node.line, node.col)
+        elif isinstance(node.target, IndexAccess):
+            container = self.visit(node.target.target)
+            idx = self.visit(node.target.index)
+            try:
+                curr_val = container[idx]
+            except Exception:
+                raise lunite_error("Index", "Invalid index access during update", node.line, node.col)
+        else:
+            raise lunite_error("Syntax", "Invalid target for increment/decrement", node.line, node.col)
+
+        if not isinstance(curr_val, (int, float)):
+            raise lunite_error("Type", "Cannot increment/decrement non-numeric value", node.line, node.col)
+
+        delta = 1 if node.op.type == TOKEN_INC else -1
+        new_val = curr_val + delta
+
+        if isinstance(node.target, Identifier):
+            self.env.assign(node.target.token.value, new_val, node.line, node.col)
+        elif isinstance(node.target, MemberAccess):
+            obj.set(node.target.member_name, new_val)
+        elif isinstance(node.target, IndexAccess):
+            container[idx] = new_val
+
+        return new_val if node.is_prefix else curr_val
 
 # ==========================================
 # CLI & BUILDER

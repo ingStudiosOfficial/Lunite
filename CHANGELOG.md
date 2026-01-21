@@ -17,3 +17,4 @@ This changelog is from version 1.8.0 onwards. v1.0.0 to v1.8.0 were during the l
 *   **1.9.2** - Fixed TypeCheck operator code, fixed 4 edge cases, added func call stack tracing, added `list(num, "typehint")`, fixed `visit_FunctionDef()` to prevent making functions with datatype constructor names, refactored `lunite_error()` calls
 *   **1.9.3** - Small speed optimizations for Lunite, a `speedtest.py` helper script and a `demos/stresstest.luna` script (used by speedtest.py)
 *   **1.9.4** - Some important bug fixes and more demos
+*   **1.9.5** - Postfix/prefix `++` and `--`, `assert(bool_cond, str_err_msg)` like in Python, Perl-like autovivification for dicts, STD LIB expansion

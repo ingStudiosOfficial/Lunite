@@ -54,6 +54,7 @@ To run the code, you must have **Lunite** or `lunite.py` script available on you
 1.  Install Python 3.x.
 2.  Download `lunite.py` source code from the repository from the commits, finding the version you want.
 3.  Install all required Python modules.
+4.  Run: `python lunite.py run source.luna`
 
 ---
 

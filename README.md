@@ -5,9 +5,9 @@
 
 **© Lunite by ANW (Subhrajit Sain), 2025–2026**
 
-**Version:** v1.9.4  
-**Language update date:** 19th January, 2026  
-**Documentation update date:** 19th January, 2026
+**Version:** v1.9.5  
+**Language update date:** 21th January, 2026  
+**Documentation update date:** 21th January, 2026  
 
 </div>
 
@@ -40,6 +40,7 @@ If you’d like to get in touch, please find contact details directly on that pa
 🤝 **Colaborators List**
 *   **(ing) Studios:** "The Lunite Programming Language" VS Code extension publisher
 *   **Douxx:** First issue, about using the Python binary in a venv if a venv exists
+*   **Starlo:** Suggested Perl-like autovivification for dicts
 
 ---
 
