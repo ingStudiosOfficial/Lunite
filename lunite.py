@@ -2081,15 +2081,15 @@ class Interpreter:
             @staticmethod
             def copyright(): return COPYRIGHT
             @staticmethod
-            def useragent(): return LUNITE_USER_AGENT
+            def user_agent(): return LUNITE_USER_AGENT
             @staticmethod
             def currentfile(): return CURRENT_FILE
             @staticmethod
             def keywords(): return KEYWORDS
             @staticmethod
-            def regexnum(): return RE_NUMBER
+            def regex_num(): return RE_NUMBER
             @staticmethod
-            def regexid(): return RE_ID
+            def regex_id(): return RE_ID
 
         make_static_lib("LuniteMeta", LuniteMetaWrapper)
 
