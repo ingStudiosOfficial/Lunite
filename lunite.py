@@ -2071,10 +2071,27 @@ class Interpreter:
             def set_env(k, v): os.environ[str(k)] = str(v)
             @staticmethod
             def exit(c=0): sys.exit(int(c))
-            @staticmethod
-            def version(): return LUNITE_VERSION_STR
 
         make_static_lib("Sys", SysWrapper)
+
+        # --- Lunite Metadata ---
+        class LuniteMetaWrapper:
+            @staticmethod
+            def version(): return LUNITE_VERSION_STR
+            @staticmethod
+            def copyright(): return COPYRIGHT
+            @staticmethod
+            def useragent(): return LUNITE_USER_AGENT
+            @staticmethod
+            def currentfile(): return CURRENT_FILE
+            @staticmethod
+            def keywords(): return KEYWORDS
+            @staticmethod
+            def regexnum(): return RE_NUMBER
+            @staticmethod
+            def regexid(): return RE_ID
+
+        make_static_lib("LuniteMeta", LuniteMetaWrapper)
 
         # --- Math ---
         class MathWrapper:
