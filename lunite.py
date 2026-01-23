@@ -1862,6 +1862,7 @@ class LuniteInstance:
     def __init__(self, mold_node):
         self.mold = mold_node
         self.fields = {}
+        self.constants = set()
         self.methods = {}
     
     def get(self, name, line, col):
@@ -1872,6 +1873,8 @@ class LuniteInstance:
         raise lunite_error("Runtime", f"Class '{self.mold.name}' does not contain the property '{name}'", line, col)
 
     def set(self, name, val):
+        if name in self.constants:
+            raise Exception(f"Cannot reassign read-only property '{name}'")
         self.fields[name] = val
 
     def __repr__(self):
@@ -1958,6 +1961,7 @@ class Interpreter:
             if fields:
                 for k, v in fields.items():
                     obj.fields[k] = v
+                    obj.constants.add(k)
             self.global_env.define(name, obj)
 
         # [ Static Libraries ]
