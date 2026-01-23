@@ -2083,7 +2083,7 @@ class Interpreter:
             @staticmethod
             def user_agent(): return LUNITE_USER_AGENT
             @staticmethod
-            def currentfile(): return CURRENT_FILE
+            def current_file(): return CURRENT_FILE
             @staticmethod
             def keywords(): return KEYWORDS
             @staticmethod
