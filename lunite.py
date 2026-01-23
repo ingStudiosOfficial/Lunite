@@ -1897,6 +1897,48 @@ class Interpreter:
         self.imported_files = imported_files if imported_files else {}
         self.visit_cache = {}
 
+    def _call_callback(self, func, args, line, col):
+        if callable(func):
+            try:
+                return func(*args)
+            except Exception as e:
+                raise lunite_error("Callback", str(e), line, col)
+
+        if isinstance(func, (FunctionDef, LambdaExpr)):
+            prev_env = self.env
+            method_env = Environment(self.global_env) 
+            
+            f_params = func.params
+            if isinstance(func, LambdaExpr):
+                f_params = [(p, None) for p in f_params]
+
+            for i, (p_name, p_default) in enumerate(f_params):
+                if i < len(args):
+                    method_env.define(p_name, args[i])
+                elif p_default is not None:
+                    val = self.visit(p_default)
+                    method_env.define(p_name, val)
+                else:
+                    raise lunite_error("Callback", f"Missing argument '{p_name}'", line, col)
+
+            old_file = globals()['CURRENT_FILE']
+            if hasattr(func, 'source_file'): globals()['CURRENT_FILE'] = func.source_file
+
+            self.env = method_env
+            try:
+                if isinstance(func.body, Block):
+                    self.visit(func.body)
+                else:
+                    return self.visit(func.body)
+            except ReturnException as e:
+                return e.value
+            finally:
+                self.env = prev_env
+                globals()['CURRENT_FILE'] = old_file
+            return None
+            
+        raise lunite_error("Type", f"'{type(func).__name__}' is not callable", line, col)
+
     def setup_std_lib(self):
         def clean_str(val):
             if isinstance(val, bool): return "true" if val else "false"
@@ -2132,6 +2174,10 @@ class Interpreter:
             def char_at(s, i): 
                 try: return LChar(clean_str(s)[int(i)])
                 except: return ""
+            @staticmethod
+            def pad_start(s, width, char=" "): return clean_str(s).rjust(int(width), str(char))
+            @staticmethod
+            def pad_end(s, width, char=" "): return clean_str(s).ljust(int(width), str(char))
 
         make_static_lib("String", StringWrapper)
         
@@ -2163,7 +2209,17 @@ class Interpreter:
                 raise lunite_error("Type", "Expected list")
             @staticmethod
             def contains(l, item):
-                 return item in l
+                return item in l
+            @staticmethod
+            def index(l, x): 
+                if x in l: return l.index(x)
+                return -1
+            @staticmethod
+            def count(l, x): return l.count(x)
+            @staticmethod
+            def extend(l, other): 
+                if isinstance(l, list) and isinstance(other, list): l.extend(other)
+                return l
         
         make_static_lib("List", ListWrapper)
 
@@ -2179,6 +2235,11 @@ class Interpreter:
             def merge(d1, d2): 
                 if isinstance(d1, dict) and isinstance(d2, dict): return {**d1, **d2}
                 return d1
+            @staticmethod
+            def has(d, k): return k in d
+            @staticmethod
+            def remove(d, k): 
+                if k in d: del d[k]
         
         make_static_lib("Dict", DictWrapper)
 
@@ -2936,6 +2997,39 @@ class Interpreter:
     
     def visit_MethodCall(self, node):
         obj = self.visit(node.obj)
+        
+        if isinstance(obj, list):
+            if node.method_name == 'map':
+                if len(node.args) != 1: raise lunite_error("Method", "map() expects 1 argument (function)", node.line, node.col)
+                callback = self.visit(node.args[0])
+                res = []
+                for item in obj:
+                    res.append(self._call_callback(callback, [item], node.line, node.col))
+                return res
+
+            elif node.method_name == 'filter':
+                if len(node.args) != 1: raise lunite_error("Method", "filter() expects 1 argument (function)", node.line, node.col)
+                callback = self.visit(node.args[0])
+                res = []
+                for item in obj:
+                    if self._call_callback(callback, [item], node.line, node.col):
+                        res.append(item)
+                return res
+
+            elif node.method_name == 'each':
+                if len(node.args) != 1: raise lunite_error("Method", "each() expects 1 argument (function)", node.line, node.col)
+                callback = self.visit(node.args[0])
+                for item in obj:
+                    self._call_callback(callback, [item], node.line, node.col)
+                return None
+
+        if isinstance(obj, dict):
+            if node.method_name == 'get':
+                args = [self.visit(arg) for arg in node.args]
+                if len(args) < 1: raise lunite_error("Method", "get() expects at least 1 argument", node.line, node.col)
+                key = args[0]
+                default = args[1] if len(args) > 1 else None
+                return obj.get(key, default)
         
         if isinstance(obj, LuniteInstance):
             method = obj.methods.get(node.method_name)
