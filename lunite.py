@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # /== == == == == == == == == == ==\
-# |==  LUNITE - v1.9.5 - by ANW  ==|
+# |==  LUNITE - v1.9.6 - by ANW  ==|
 # \== == == == == == == == == == ==/
 
 import sys
@@ -18,6 +18,7 @@ import time
 import random
 import base64
 import hashlib
+import getpass
 from dataclasses import dataclass, field
 from typing import Any, List, Dict, Optional, Tuple, Set
 try:
@@ -32,9 +33,9 @@ except ImportError:
 # VERSION & CONFIG
 # ==========================================
 
-LUNITE_VERSION_STR = "v1.9.5"
+LUNITE_VERSION_STR = "v1.9.6"
 COPYRIGHT          = "Copyright ANW, 2025-2026"
-LUNITE_USER_AGENT  = "Lunite/1.9.5"
+LUNITE_USER_AGENT  = "Lunite/1.9.6"
 CURRENT_FILE       = "REPL"
 
 # ==========================================
@@ -52,7 +53,7 @@ def lunite_error(kind, message, line=None, col=None):
     loc = ""
     file = CURRENT_FILE
     if line is not None and col is not None:
-        loc = f"\n{Fore.MAGENTA}   File: {file}:{line}:{col}{Style.RESET_ALL}"
+        loc = f"\n{Fore.MAGENTA}   File:{Style.RESET_ALL} {file}:{line}:{col}"
 
     e = Exception(f"{Fore.RED}{kind} Error:{Style.RESET_ALL} {message}{loc}")
     e.has_location = True
@@ -143,7 +144,7 @@ KEYWORDS = [
     'return', 'new', 'true', 'false', 'null', 'import',
     'attempt', 'rescue', 'finally', 'extends', 'break', 'advance', 'leap',
     'match', 'other', 'and', 'or', 'not', 'const', 'import_py',
-    'enum', 'is', 'from', 'assert'
+    'enum', 'is', 'from', 'assert', 'public', 'private', 'global'
 ]
 
 # ==========================================
@@ -627,12 +628,18 @@ class FunctionDef(AST):
     name: str
     params: List[Tuple[str, Optional[AST]]]
     body: Block
+    is_public: bool = True
+    is_global: bool = False
+    source_file: str = ""
 
 @dataclass
 class ClassDef(AST):
     name: str
     body: Block
     superclass: Optional[str]
+    is_public: bool = True
+    is_global: bool = False
+    source_file: str = ""
 
 @dataclass
 class IfStatement(AST):
@@ -720,6 +727,8 @@ class VarDecl(AST):
     name: str
     value: AST
     is_const: bool = False
+    is_public: bool = True
+    is_global: bool = False
 
 @dataclass
 class NewInstance(AST):
@@ -760,6 +769,8 @@ class DestructuringDecl(AST):
     names: List[str]
     value: AST
     is_const: bool = False
+    is_public: bool = True
+    is_global: bool = False
 
 @dataclass
 class SliceAccess(AST):
@@ -817,7 +828,8 @@ class Parser:
                             s += chr(int(hex_str, 16))
                             i += 6
                             continue
-                        except: pass
+                        except ValueError:
+                            raise lunite_error("Syntax", f"Invalid Unicode sequence in f-string", line, col)
                 
                 if next_char in escape_map:
                     s += escape_map[next_char]
@@ -1271,7 +1283,7 @@ class Parser:
         if self.current_token.type in (TOKEN_INC, TOKEN_DEC):
             op_token = self.current_token
             self.eat(op_token.type)
-            node = UpdateExpr(node, op_token, False) # False = Postfix
+            node = UpdateExpr(node, op_token, False)
             node.line = op_token.line
             node.col = op_token.col
 
@@ -1307,23 +1319,43 @@ class Parser:
             node.col = token.col
         return node
     
-    def bitwise_expr(self):
+    def bitwise_and_expr(self):
         node = self.shift_expr()
-        while self.current_token.type in (TOKEN_BIT_AND, TOKEN_BIT_OR, TOKEN_BIT_XOR):
+        while self.current_token.type == TOKEN_BIT_AND:
             token = self.current_token
-            self.eat(token.type)
+            self.eat(TOKEN_BIT_AND)
             node = BinaryOp(left=node, op=token, right=self.shift_expr())
+            node.line = token.line
+            node.col = token.col
+        return node
+
+    def bitwise_xor_expr(self):
+        node = self.bitwise_and_expr()
+        while self.current_token.type == TOKEN_BIT_XOR:
+            token = self.current_token
+            self.eat(TOKEN_BIT_XOR)
+            node = BinaryOp(left=node, op=token, right=self.bitwise_and_expr())
+            node.line = token.line
+            node.col = token.col
+        return node
+
+    def bitwise_or_expr(self):
+        node = self.bitwise_xor_expr()
+        while self.current_token.type == TOKEN_BIT_OR:
+            token = self.current_token
+            self.eat(TOKEN_BIT_OR)
+            node = BinaryOp(left=node, op=token, right=self.bitwise_xor_expr())
             node.line = token.line
             node.col = token.col
         return node
     
     def comp_expr(self):
-        node = self.bitwise_expr()
+        node = self.bitwise_or_expr()
         while self.current_token.type in (TOKEN_EQ, TOKEN_NEQ, TOKEN_GT, TOKEN_LT, TOKEN_LE, TOKEN_GE, TOKEN_IS, TOKEN_KEYWORD):
             token = self.current_token
             if token.type == TOKEN_KEYWORD and token.value == 'in':
                 self.eat(TOKEN_KEYWORD)
-                right = self.bitwise_expr()
+                right = self.bitwise_or_expr()
                 node = BinaryOp(left=node, op=token, right=right) 
                 node.line = token.line
                 node.col = token.col
@@ -1332,12 +1364,12 @@ class Parser:
                 break
             self.eat(token.type)
             if token.type == TOKEN_IS:
-                target = self.bitwise_expr()
+                target = self.bitwise_or_expr()
                 node = TypeCheckOp(node, target)
                 node.line = token.line
                 node.col = token.col
             else:
-                node = BinaryOp(left=node, op=token, right=self.bitwise_expr())
+                node = BinaryOp(left=node, op=token, right=self.bitwise_or_expr())
                 node.line = token.line
                 node.col = token.col
         return node
@@ -1366,6 +1398,50 @@ class Parser:
         node.line = token.line
         node.col = token.col
         return node
+
+    def _parse_modifiers(self):
+        is_public = True
+        is_global = False
+        is_const = False
+
+        is_public_kw = False
+        is_private_kw = False
+        is_global_kw = False
+        is_const_kw = False
+
+        while self.current_token.type == TOKEN_KEYWORD:
+            val = self.current_token.value
+            if val == 'public':
+                if is_private_kw:
+                    raise lunite_error("Syntax", "Cannot use 'public' with 'private'")
+                if is_public_kw:
+                    raise lunite_error("Syntax", "Duplicate 'public'")
+                is_public = True
+                is_public_kw = True
+                self.eat(TOKEN_KEYWORD)
+            elif val == 'private':
+                if is_public_kw:
+                    raise lunite_error("Syntax", "Cannot use 'private' with 'public'")
+                if is_private_kw:
+                    raise lunite_error("Syntax", "Duplicate 'private'")
+                is_public = False
+                is_private_kw = True
+                self.eat(TOKEN_KEYWORD)
+            elif val == 'global':
+                if is_global_kw:
+                    raise lunite_error("Syntax", "Duplicate 'global'")
+                is_global = True
+                is_global_kw = True
+                self.eat(TOKEN_KEYWORD)
+            elif val == 'const':
+                if is_const_kw:
+                    raise lunite_error("Syntax", "Duplicate 'const'")
+                is_const = True
+                is_const_kw = True
+                self.eat(TOKEN_KEYWORD)
+            else:
+                break
+        return is_public, is_global, is_const
 
     def parse_statement(self):
         start_line = self.current_token.line
@@ -1441,8 +1517,11 @@ class Parser:
             return node
 
         elif token.type == TOKEN_KEYWORD and (token.value == 'let' or token.value == 'const'):
-            is_const = (token.value == 'const')
+            is_const_initial = (token.value == 'const')
             self.eat(TOKEN_KEYWORD)
+
+            is_public, is_global, is_const_mod = self._parse_modifiers()
+            is_const = is_const_initial or is_const_mod
             
             if not is_const and self.current_token.type == TOKEN_KEYWORD and self.current_token.value == 'const':
                 self.eat(TOKEN_KEYWORD)
@@ -1450,6 +1529,8 @@ class Parser:
 
             if self.current_token.type == TOKEN_LBRACKET:
                 self.eat(TOKEN_LBRACKET)
+                is_public, is_global, is_const_mod = self._parse_modifiers()
+                is_const = is_const_initial or is_const_mod
                 names = []
                 names.append(self.current_token.value)
                 self.eat(TOKEN_ID)
@@ -1462,7 +1543,7 @@ class Parser:
                 self.eat(TOKEN_RBRACKET)
                 self.eat(TOKEN_ASSIGN)
                 val = self.expr()
-                node = DestructuringDecl(names, val, is_const)
+                node = DestructuringDecl(names, val, is_const, is_public, is_global)
                 node.line = token.line
                 node.col = token.col
                 return node
@@ -1478,13 +1559,15 @@ class Parser:
                 val.line = token.line
                 val.col = token.col
 
-            node = VarDecl(var_name, val, is_const)
+            node = VarDecl(var_name, val, is_const, is_public, is_global)
             node.line = token.line
             node.col = token.col
             return node
         
         elif token.type == TOKEN_KEYWORD and token.value == 'func':
             self.eat(TOKEN_KEYWORD)
+            is_public, is_global, _ = self._parse_modifiers()
+
             func_name = self.current_token.value
             self.eat(TOKEN_ID)
             self.eat(TOKEN_LPAREN)
@@ -1513,13 +1596,15 @@ class Parser:
             self.eat(TOKEN_LBRACE)
             body = self.block()
             self.eat(TOKEN_RBRACE)
-            node = FunctionDef(func_name, params, body)
+            node = FunctionDef(func_name, params, body, is_public, is_global)
             node.line = token.line
             node.col = token.col
             return node
 
         elif token.type == TOKEN_KEYWORD and token.value == 'class':
             self.eat(TOKEN_KEYWORD)
+            is_public, is_global, _ = self._parse_modifiers()
+
             class_name = self.current_token.value
             self.eat(TOKEN_ID)
             
@@ -1533,7 +1618,7 @@ class Parser:
             body = self.block()
             self.eat(TOKEN_RBRACE)
             
-            node = ClassDef(class_name, body, superclass)
+            node = ClassDef(class_name, body, superclass, is_public, is_global)
             node.line = token.line
             node.col = token.col
             return node
@@ -1826,10 +1911,11 @@ class Parser:
 # ==========================================
 
 class Environment:
-    __slots__ = ('values', 'constants', 'parent')
+    __slots__ = ('values', 'constants', 'parent', 'permissions')
     def __init__(self, parent=None):
         self.values = {}
         self.constants = set()
+        self.permissions = {}
         self.parent = parent
 
     def get(self, name, line, col):
@@ -1841,10 +1927,16 @@ class Environment:
             
         raise lunite_error("Runtime", f"Variable '{name}' is undefined", line, col)
 
-    def define(self, name, value, is_const=False):
+    def define(self, name, value, is_const=False, is_public=True):
         self.values[name] = value
+        self.permissions[name] = {'public': is_public}
         if is_const:
             self.constants.add(name)
+
+    def is_public(self, name):
+        if name in self.permissions:
+            return self.permissions[name]['public']
+        return True
 
     def assign(self, name, value, line, col):
         current = self
@@ -1899,6 +1991,15 @@ class Interpreter:
         self.env = self.global_env
         self.imported_files = imported_files if imported_files else {}
         self.visit_cache = {}
+
+    def _get_target_env(self, is_global):
+        if not is_global:
+            return self.env
+        
+        target = self.env
+        while target.parent is not None and target.parent != self.global_env:
+            target = target.parent
+        return target
 
     def _call_callback(self, func, args, line, col):
         if callable(func):
@@ -2134,15 +2235,46 @@ class Interpreter:
             @staticmethod
             def clamp(n, smallest, largest): return max(smallest, min(n, largest))
             @staticmethod
-            def random(): return random.random()
-            @staticmethod
-            def randint(a, b): return random.randint(a, b)
-            @staticmethod
             def max(*args): return max(args) if args else 0
             @staticmethod
             def min(*args): return min(args) if args else 0
+            @staticmethod
+            def factorial(x): return math.factorial(int(x))
+            @staticmethod
+            def gcd(a, b): return math.gcd(int(a), int(b))
+            @staticmethod
+            def lcm(a, b): return math.lcm(int(a), int(b))
+            @staticmethod
+            def hypot(x, y): return math.hypot(x, y)
         
         make_static_lib("Math", MathWrapper, {'pi': math.pi, 'e': math.e, 'tau': math.tau, 'inf': math.inf})
+
+        # --- Random ---
+        class RandomWrapper:
+            @staticmethod
+            def random(): return random.random()
+            @staticmethod
+            def randint(a, b): return random.randint(int(a), int(b))
+            @staticmethod
+            def uniform(a, b): return random.uniform(float(a), float(b))
+            @staticmethod
+            def randrange(start, stop, step=1): return random.randrange(int(start), int(stop), int(step))
+            @staticmethod
+            def seed(a=None): random.seed(a)
+            @staticmethod
+            def choice(l):
+                if isinstance(l, (list, tuple, str)) and len(l) > 0: return random.choice(l)
+                return None
+            @staticmethod
+            def shuffle(l):
+                if isinstance(l, list): random.shuffle(l); return l
+                raise lunite_error("Type", "shuffle() expects a list")
+            @staticmethod
+            def sample(l, k):
+                if isinstance(l, (list, tuple, str)): return random.sample(l, int(k))
+                raise lunite_error("Type", "sample() expects a sequence")
+
+        make_static_lib("Random", RandomWrapper)
 
         # --- Time ---
         class TimeWrapper:
@@ -2264,6 +2396,56 @@ class Interpreter:
         
         make_static_lib("Dict", DictWrapper)
 
+        # --- Set Utils ---
+        class SetWrapper:
+            @staticmethod
+            def add(s, v): 
+                if isinstance(s, set): s.add(v); return s
+                raise lunite_error("Type", "Expected set")
+            @staticmethod
+            def remove(s, v): 
+                if isinstance(s, set) and v in s: s.remove(v)
+                return s
+            @staticmethod
+            def has(s, v): return v in s
+            @staticmethod
+            def union(s1, s2): 
+                if isinstance(s1, set) and isinstance(s2, set): return s1.union(s2)
+                return s1
+            @staticmethod
+            def intersect(s1, s2):
+                if isinstance(s1, set) and isinstance(s2, set): return s1.intersection(s2)
+                return set()
+            @staticmethod
+            def diff(s1, s2):
+                if isinstance(s1, set) and isinstance(s2, set): return s1.difference(s2)
+                return s1
+            @staticmethod
+            def list(s): return list(s)
+
+        make_static_lib("Set", SetWrapper)
+
+        # --- Console Utils ---
+        class ConsoleWrapper:
+            @staticmethod
+            def clear():
+                os.system('cls' if os.name == 'nt' else 'clear')
+            @staticmethod
+            def read_pass(prompt=""):
+                return getpass.getpass(str(prompt))
+            @staticmethod
+            def size():
+                try:
+                    sz = os.get_terminal_size()
+                    return {"columns": sz.columns, "lines": sz.lines}
+                except: return {"columns": 80, "lines": 24}
+            @staticmethod
+            def title(t):
+                if os.name == 'nt': os.system(f'title {str(t)}')
+                else: sys.stdout.write(f"\x1b]2;{str(t)}\x07")
+        
+        make_static_lib("Console", ConsoleWrapper)
+
         # --- Base64 ---
         class Base64Wrapper:
             @staticmethod
@@ -2303,7 +2485,11 @@ class Interpreter:
         self.global_env.define('out', lambda x: print(clean_str(x)))
         
         def lunite_input(prompt, type_hint="string"):
+            if type_hint == "pass":
+                return getpass.getpass(clean_str(prompt))
+
             text = input(clean_str(prompt))
+            
             try:
                 if type_hint == "int": return int(text)
                 if type_hint == "float": return float(text)
@@ -2313,7 +2499,8 @@ class Interpreter:
                 if type_hint == "char": return LChar(text)
                 return text
             except ValueError:
-                raise lunite_error("Input", f"Failed to convert '{text}' to type {type_hint}")  
+                raise lunite_error("Input", f"Failed to convert '{text}' to type {type_hint}")
+                
         self.global_env.define('in', lunite_input)
 
         self.global_env.define('range', lambda a, b: list(range(int(a), int(b) + 1)))
@@ -2541,7 +2728,8 @@ class Interpreter:
 
     def visit_VarDecl(self, node):
         val = self.visit(node.value)
-        self.env.define(node.name, val, is_const=node.is_const)
+        target_env = self._get_target_env(node.is_global)
+        target_env.define(node.name, val, is_const=node.is_const, is_public=node.is_public)
         return val
 
     def visit_Assign(self, node):
@@ -2804,7 +2992,8 @@ class Interpreter:
             globals()['CURRENT_FILE'] = old_file
 
         for name, value in module_env.values.items():
-            module_obj.fields[name] = value
+            if module_env.is_public(name):
+                module_obj.fields[name] = value
             
         self.imported_files[target_file] = module_obj
         self.env.define(alias, module_obj)
@@ -2818,7 +3007,8 @@ class Interpreter:
             raise lunite_error("Function Definition", f"Cannot override built-in type constructor '{node.name}'", node.line, node.col)
 
         node.source_file = CURRENT_FILE
-        self.env.define(node.name, node)
+        target_env = self._get_target_env(node.is_global)
+        target_env.define(node.name, node, is_public=node.is_public)
         return node
 
     def visit_ClassDef(self, node):
@@ -2827,7 +3017,8 @@ class Interpreter:
             if isinstance(stmt, FunctionDef):
                 stmt.source_file = CURRENT_FILE
         
-        self.env.define(node.name, node)
+        target_env = self._get_target_env(node.is_global)
+        target_env.define(node.name, node, is_public=node.is_public)
         return node
 
     def visit_ReturnStatement(self, node):
@@ -3227,8 +3418,9 @@ class Interpreter:
             raise lunite_error("Destructuring", "Value is not iterable", node.line, node.col)
         if len(val) < len(node.names):
             raise lunite_error("Destructuring", f"Not enough values to unpack (expected {len(node.names)}, got {len(val)})", node.line, node.col)
+        target_env = self._get_target_env(node.is_global)
         for i, name in enumerate(node.names):
-            self.env.define(name, val[i], is_const=node.is_const)
+            target_env.define(name, val[i], is_const=node.is_const, is_public=node.is_public)
         return val
 
     def visit_AssertStatement(self, node):

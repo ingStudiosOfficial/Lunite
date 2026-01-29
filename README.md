@@ -5,9 +5,9 @@
 
 **© Lunite by ANW (Subhrajit Sain), 2025–2026**
 
-**Version:** v1.9.5  
-**Language update date:** 21th January, 2026  
-**Documentation update date:** 21th January, 2026  
+**Version:** v1.9.6  
+**Language update date:** 29th January, 2026  
+**Documentation update date:** 29th January, 2026  
 
 </div>
 

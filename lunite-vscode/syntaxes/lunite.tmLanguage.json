@@ -143,6 +143,10 @@
     "storage": {
       "patterns": [
         {
+          "match": "\\b(public|private|global)\\b",
+          "name": "storage.modifier.luna"
+        },
+        {
           "match": "\\b(let|const)\\s+([a-zA-Z_]\\w*)",
           "captures": {
             "1": { "name": "storage.type.luna" },
@@ -159,7 +163,7 @@
         },
         {
           "name": "support.class.builtin.luna",
-          "match": "\\b(Math|File|Net|Json|Sys|Time|String|Regex)\\b"
+          "match": "\\b(Math|File|Net|Json|Sys|Time|String|Regex|Set|Console|Meta|Random|List|Dict|Base64|Hash)\\b"
         },
         {
           "name": "support.type.primitive.luna",
