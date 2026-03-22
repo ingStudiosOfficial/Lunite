@@ -1,0 +1,144 @@
+import_py pygame
+
+func game() {
+    pygame.init();
+
+    let WIDTH = 600;
+    let HEIGHT = 400;
+    let CELL_SIZE = 20;
+    let FOOD_CELL_SIZE = 10;
+    let screen = pygame.display.set_mode((WIDTH, HEIGHT));
+    pygame.display.set_caption("Lunite Znake | ANW.is-a.dev");
+
+    let SNAKE = (0, 0, 175);
+    let FOOD = (175, 0, 0);
+    let BACKGROUND = (10, 10, 10);
+
+    let snake = [(100, 100), (90, 100), (80, 100)];
+    let snake_dir = (CELL_SIZE, 0);
+    let food = (Random.randint(0, (WIDTH / CELL_SIZE) - 1) * CELL_SIZE,
+                Random.randint(0, (HEIGHT / CELL_SIZE) - 1) * CELL_SIZE);
+    let clock = pygame.time.Clock();
+    let game_over = false;
+
+    let score = 0;
+
+    while(not game_over) {
+        screen.fill(BACKGROUND);
+        let min = Math.min;
+	BACKGROUND = (score >= 10) ? ((int(min(10 + ((score - 10) * 5), 255)), 
+                                       int(min(10 + ((score - 10) * 5), 255)), 
+                                       int(min(10 + ((score - 10) * 5), 255))))
+                                   : (10, 10, 10);
+        for event in pygame.event.get() {
+            if(event.type == pygame.QUIT) {
+                out("Game quit.");
+                game_over = true;
+            } else if (event.type == pygame.KEYDOWN) {
+                if(event.key == pygame.K_UP and snake_dir != (0, CELL_SIZE)) {
+                    snake_dir = (0, -CELL_SIZE);
+                } else if(event.key == pygame.K_DOWN and snake_dir != (0, -CELL_SIZE)) {
+                    snake_dir = (0, CELL_SIZE);
+                } else if(event.key == pygame.K_LEFT and snake_dir != (CELL_SIZE, 0)) {
+                    snake_dir = (-CELL_SIZE, 0);
+                } else if(event.key == pygame.K_RIGHT and snake_dir != (-CELL_SIZE, 0)) {
+                    snake_dir = (CELL_SIZE, 0);
+                } else if(event.key == pygame.K_SPACE) {
+                    out("Game paused.");
+                    let paused = true;
+                    while(paused) {
+                        for e in pygame.event.get() {
+                            if(e.type == pygame.QUIT) {
+                                out("Game quit.");
+                                game_over = true;
+                                paused = false;
+                            } else if(e.type == pygame.KEYDOWN) {
+                                if(e.key == pygame.K_SPACE) {
+                                    out("Game resumed.");
+                                    paused = false;
+                                }
+                            }
+                            Time.sleep(0.001);
+                        }
+                    }
+                }
+            }
+        }
+
+        let new_head = (snake[0][0] + snake_dir[0], snake[0][1] + snake_dir[1]);
+
+        if(List.contains(snake, new_head) or new_head[0] < 0 or new_head[0] >= WIDTH or new_head[1] < 0 or new_head[1] >= HEIGHT) {
+            game_over = true;
+        } else {
+            snake.insert(0, new_head)
+            if(new_head == food) {
+                food = (Random.randint(0, (WIDTH / CELL_SIZE) - 1) * CELL_SIZE,
+                        Random.randint(0, (HEIGHT / CELL_SIZE) - 1) * CELL_SIZE);
+                score = score + 1;
+            } else {
+                snake.pop();
+            }
+        }
+
+        for segment in snake {
+            let offset1;
+            let offset2;
+            offset1 = (score >= 20) ? Random.choice([int(Random.randint(-(score - 20), score - 20) / Random.randint(1, 5)), 0, 0, 0]) : 0;
+            offset2 = (score >= 20) ? Random.choice([int(Random.randint(-(score - 20), score - 20) / Random.randint(1, 5)), 0, 0, 0]) : 0;
+            SNAKE   = (score >= 30) ? (Random.randint(100, 255), Random.randint(100, 255), Random.randint(100, 255)) : (0, 0, 175);
+            pygame.draw.rect(screen, SNAKE, pygame.Rect(segment[0] + offset1, segment[1] + offset2, CELL_SIZE, CELL_SIZE));
+        }
+        
+	let foffset1;
+        let foffset2;
+        foffset1 = (score >= 20) ? Random.randint(0, 10) : 5;
+        foffset2 = (score >= 20) ? Random.randint(0, 10) : 5;
+        pygame.draw.rect(screen, FOOD, pygame.Rect(food[0] + foffset1, food[1] + foffset2, FOOD_CELL_SIZE, FOOD_CELL_SIZE));
+        
+        pygame.display.flip();
+        clock.tick(10);
+    }
+
+    pygame.quit();
+    return score;
+}
+
+let play_again = true;
+let game_number = 1;
+let high_score = 0;
+let new_hs_record = false;
+
+while(play_again) {
+    Console.clear();
+    out("/----------------------------------------\\");
+    out("|   Lunite Znake by ANW.is-a.dev         |");
+    out("|----------------------------------------|");
+    out("|   The first ever hard Lunite \"game\".   |");
+    out("\\----------------------------------------/\n");
+
+    out("Instructions:");
+    out("-------------");
+    out("The game is basically snake: eat the red food to grow.");
+    out("The further you progress, the more weird the game becomes.");
+    out("People with epilepsy are advised to not play this game.");
+    out("To win, you need to get a minimum score of 50.");
+    out("Use arrow keys to change heading, space to pause/resume.\n");
+
+    out("Staring in 3 seconds...");
+    Time.sleep(3);
+    out("Game started.\n");
+
+    let score = game();
+    new_hs_record = score > high_score;
+    high_score = Math.max(high_score, score);
+
+    out("\nResults:");
+    out("--------");
+    out("Game #" + str(game_number));
+    out("Score: " + str(score));
+    out("Highscore: " + str(high_score) + ((new_hs_record) ? " [NEW RECORD]" : ""));
+    out(((score >= 50) ? "You won!" : "You lost.") + "\n");
+
+    play_again = String.starts_with(String.upper(in("Play again? [Y/N]: ", "str")), "Y");
+    game_number++;
+}
