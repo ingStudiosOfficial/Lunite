@@ -17,6 +17,7 @@ except ImportError:
         def __getattr__(self, name): return ""
     Fore = Style = ColoramaFallback()
 
+import core.constants as constants
 from core.constants import *
 from core.errors import *
 from core.types import *
@@ -73,8 +74,7 @@ def run_code(source):
 # [RUNTIME BINDED CODE END]
 
 def start_repl():
-    global CURRENT_FILE
-    CURRENT_FILE = "REPL"
+    constants.CURRENT_FILE = "REPL"
     print(f"{Fore.CYAN}Lunite {LUNITE_VERSION_STR} REPL CLI{Style.RESET_ALL}")
     print(f"{Fore.YELLOW}{COPYRIGHT}{Style.RESET_ALL}")
     
@@ -167,8 +167,6 @@ def clean_build():
         print(f"Clean error: {e}")
 
 def main():
-    global CURRENT_FILE
-
     if len(sys.argv) < 2:
         start_repl()
         return
@@ -184,7 +182,7 @@ def main():
             print("Run failed: File not provided.")
             return
         path = sys.argv[2]
-        CURRENT_FILE = os.path.abspath(path)
+        constants.CURRENT_FILE = os.path.abspath(path)
         if os.path.exists(path):
             with open(path, 'r') as f:
                 run_code(f.read())
@@ -208,7 +206,7 @@ def main():
                 print("Build failed: File not provided.")
                 return
             print("-------------------------------")
-            CURRENT_FILE = os.path.abspath(sys.argv[2])
+            constants.CURRENT_FILE = os.path.abspath(sys.argv[2])
             compile_code(sys.argv[2])
         elif cnt_build.lower().startswith('n'):
             print("Build failed: Aborted by user.")

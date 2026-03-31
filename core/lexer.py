@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from core.types import *
+from core.errors import *
 
 # ==========================================
 # LEXER

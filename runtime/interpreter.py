@@ -17,6 +17,7 @@ import base64
 import importlib
 
 from core.errors import *
+import core.constants as constants
 from core.ast import *
 from core.types import *
 from core.parser import *
@@ -76,8 +77,8 @@ class Interpreter:
                 else:
                     raise lunite_error("Callback", f"Missing argument '{p_name}'", line, col)
 
-            old_file = globals()['CURRENT_FILE']
-            if hasattr(func, 'source_file'): globals()['CURRENT_FILE'] = func.source_file
+            old_file = constants.CURRENT_FILE
+            if hasattr(func, 'source_file'): constants.CURRENT_FILE = func.source_file
 
             self.env = method_env
             try:
@@ -89,7 +90,7 @@ class Interpreter:
                 return e.value
             finally:
                 self.env = prev_env
-                globals()['CURRENT_FILE'] = old_file
+                constants.CURRENT_FILE = old_file
             return None
             
         raise lunite_error("Type", f"'{type(func).__name__}' is not callable", line, col)
@@ -239,7 +240,7 @@ class Interpreter:
             @staticmethod
             def user_agent(): return LUNITE_USER_AGENT
             @staticmethod
-            def current_file(): return CURRENT_FILE
+            def current_file(): return constants.CURRENT_FILE
             @staticmethod
             def keywords(): return KEYWORDS
             @staticmethod
@@ -614,7 +615,7 @@ class Interpreter:
             
             if hasattr(e, "has_location") and e.has_location:
                 if isinstance(node, (FunctionCall, MethodCall, NewInstance)):
-                    stack_trace = f"\n{Fore.YELLOW}   called from:{Style.RESET_ALL} {CURRENT_FILE}:{node.line}:{node.col}"
+                    stack_trace = f"\n{Fore.YELLOW}   called from:{Style.RESET_ALL} {constants.CURRENT_FILE}:{node.line}:{node.col}"
                     
                     if e.args:
                         new_msg = e.args[0] + stack_trace
@@ -977,7 +978,7 @@ class Interpreter:
                     self.env = prev
 
     def visit_ImportStatement(self, node):
-        ctx_dir = os.path.dirname(os.path.abspath(CURRENT_FILE)) if CURRENT_FILE != "REPL" else os.getcwd()
+        ctx_dir = os.path.dirname(os.path.abspath(constants.CURRENT_FILE)) if constants.CURRENT_FILE != "REPL" else os.getcwd()
         target_file = ""
 
         if node.source_package:
@@ -1022,10 +1023,10 @@ class Interpreter:
         module_env = Environment(self.global_env)
         
         old_env = self.env
-        old_file = globals()['CURRENT_FILE']
+        old_file = constants.CURRENT_FILE
         
         self.env = module_env
-        globals()['CURRENT_FILE'] = target_file
+        constants.CURRENT_FILE = target_file
         
         try:
             lexer = Lexer(code)
@@ -1040,7 +1041,7 @@ class Interpreter:
             self.visit(ast)
         finally:
             self.env = old_env
-            globals()['CURRENT_FILE'] = old_file
+            constants.CURRENT_FILE = old_file
 
         for name, value in module_env.values.items():
             if module_env.is_public(name):
@@ -1057,16 +1058,16 @@ class Interpreter:
         if node.name in reserved_types:
             raise lunite_error("Function Definition", f"Cannot override built-in type constructor '{node.name}'", node.line, node.col)
 
-        node.source_file = CURRENT_FILE
+        node.source_file = constants.CURRENT_FILE
         target_env = self._get_target_env(node.is_global)
         target_env.define(node.name, node, is_public=node.is_public)
         return node
 
     def visit_ClassDef(self, node):
-        node.source_file = CURRENT_FILE
+        node.source_file = constants.CURRENT_FILE
         for stmt in node.body.statements:
             if isinstance(stmt, FunctionDef):
-                stmt.source_file = CURRENT_FILE
+                stmt.source_file = constants.CURRENT_FILE
         
         target_env = self._get_target_env(node.is_global)
         target_env.define(node.name, node, is_public=node.is_public)
@@ -1127,8 +1128,8 @@ class Interpreter:
                 else:
                     raise lunite_error("Function", f"Missing argument for '{p_name}'", node.line, node.col)
             
-            old_file = globals()['CURRENT_FILE']
-            if hasattr(func, 'source_file'): globals()['CURRENT_FILE'] = func.source_file
+            old_file = constants.CURRENT_FILE
+            if hasattr(func, 'source_file'): constants.CURRENT_FILE = func.source_file
 
             self.env = new_env
             try:
@@ -1140,7 +1141,7 @@ class Interpreter:
                 return e.value
             finally:
                 self.env = prev_env
-                globals()['CURRENT_FILE'] = old_file
+                constants.CURRENT_FILE = old_file
             return None
         
         raise lunite_error("Function", f"'{node.name}' is not a function", node.line, node.col)
@@ -1326,11 +1327,11 @@ class Interpreter:
                     else:
                         raise lunite_error("Method", f"Missing argument for '{p_name}'", node.line, node.col)
 
-                old_file = globals()['CURRENT_FILE']
+                old_file = constants.CURRENT_FILE
                 if hasattr(method, 'source_file'):
-                    globals()['CURRENT_FILE'] = method.source_file
+                    constants.CURRENT_FILE = method.source_file
                 elif hasattr(obj.mold, 'source_file'):
-                    globals()['CURRENT_FILE'] = obj.mold.source_file
+                    constants.CURRENT_FILE = obj.mold.source_file
 
                 self.env = method_env
                 try:
@@ -1339,7 +1340,7 @@ class Interpreter:
                     return e.value
                 finally:
                     self.env = prev_env
-                    globals()['CURRENT_FILE'] = old_file
+                    constants.CURRENT_FILE = old_file
                 return None
 
             field = obj.fields.get(node.method_name)
@@ -1402,7 +1403,7 @@ class Interpreter:
             raise lunite_error("Slice", str(e), node.line, node.col)
         
     def visit_ImportPyStatement(self, node):
-        ctx_dir = os.path.dirname(os.path.abspath(CURRENT_FILE)) if CURRENT_FILE != "REPL" else os.getcwd()
+        ctx_dir = os.path.dirname(os.path.abspath(constants.CURRENT_FILE)) if constants.CURRENT_FILE != "REPL" else os.getcwd()
         
         try:
             if node.source_package:

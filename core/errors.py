@@ -9,7 +9,9 @@ except ImportError:
         def __getattr__(self, name): return ""
     Fore = Style = ColoramaFallback()
 
+import core.constants as constants
 from core.constants import *
+
 
 # ==========================================
 # CUSTOM EXCEPTION FORMATTER
@@ -17,7 +19,7 @@ from core.constants import *
 
 def lunite_error(kind, message, line=None, col=None):
     loc = ""
-    file = CURRENT_FILE
+    file = constants.CURRENT_FILE
     if line is not None and col is not None:
         loc = f"\n{Fore.MAGENTA}   File:{Style.RESET_ALL} {file}:{line}:{col}"
 
