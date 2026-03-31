@@ -3,7 +3,8 @@
 
 from dataclasses import dataclass, field
 from typing import List, Optional, Tuple
-from lexer import *
+
+from core.lexer import *
 
 # ==========================================
 # AST NODES
