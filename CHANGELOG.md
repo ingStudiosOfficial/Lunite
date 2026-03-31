@@ -19,3 +19,4 @@ This changelog is from version 1.8.0 onwards. v1.0.0 to v1.8.0 were during the l
 *   **1.9.4** - Some important bug fixes and more demos
 *   **1.9.5** - Postfix/prefix `++` and `--`, `assert(bool_cond, str_err_msg)` like in Python, Perl-like autovivification for dicts, STD LIB expansion
 *   **1.9.6** - `public`, `private` and `global` access specifiers, error messages colour fix, some more STD LIB expansion
+*   **SPLIT** - Lunite has been split into 9 separate files to maintain it easily.
