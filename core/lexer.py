@@ -378,6 +378,10 @@ class Lexer:
                     return Token(TOKEN_NEQ, '!=', self.line, start_col)
                 return Token(TOKEN_NOT, '!', self.line, start_col)
             
+            if self.current_char == '@':
+                self.advance()
+                return Token(TOKEN_AT, '@', self.line, start_col)
+            
             raise lunite_error("Syntax", f"Illegal character '{self.current_char}", self.line, self.col)
 
         return Token(TOKEN_EOF, None, self.line, self.col)

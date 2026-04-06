@@ -243,6 +243,14 @@ class Parser:
             node.col = token.col
             return node
         
+        elif token.type == TOKEN_KEYWORD and token.value == 'await':
+            self.eat(TOKEN_KEYWORD)
+            expr = self.expr()
+            node = AwaitExpr(expr)
+            node.line = token.line
+            node.col = token.col
+            return node
+        
         elif token.type == TOKEN_KEYWORD and token.value == 'true':
             self.eat(TOKEN_KEYWORD)
             node = Boolean(token, True)
@@ -672,6 +680,19 @@ class Parser:
 
     def _parse_statement_body(self):
         token = self.current_token
+
+        if token.type == TOKEN_AT:
+            self.eat(TOKEN_AT)
+            decorator_expr = self.expr() 
+            
+            if self.current_token.type == TOKEN_KEYWORD and self.current_token.value == "func":
+                func_node = self.parse_statement() 
+                node = DecoratedFunc(decorator_expr, func_node)
+                node.line = token.line
+                node.col = token.col
+                return node
+            else:
+                raise lunite_error("Syntax", "expected function definition after decorator", self.current_token.line, self.current_token.col)
         
         if token.type == TOKEN_KEYWORD and token.value == 'import':
             self.eat(TOKEN_KEYWORD)
@@ -728,6 +749,25 @@ class Parser:
                     raise lunite_error("Import", "Expected Python package name after 'from'", self.current_token.line, self.current_token.col)
             
             node = ImportPyStatement(name, alias=name, source_package=source_package)
+            node.line = token.line
+            node.col = token.col
+            return node
+
+        elif token.type == TOKEN_KEYWORD and token.value == 'async':
+            self.eat(TOKEN_KEYWORD)
+            if self.current_token.type == TOKEN_KEYWORD and self.current_token.value == 'func':
+                func_node = self.parse_statement()
+                node = AsyncFuncDef(func_node.name, func_node.params, func_node.body)
+                node.line = token.line
+                node.col = token.col
+                return node
+            else:
+                raise lunite_error("Syntax", "Expected 'func' after 'async'", self.current_token.line, self.current_token.col)
+
+        elif token.type == TOKEN_KEYWORD and token.value == 'await':
+            self.eat(TOKEN_KEYWORD)
+            expr = self.expr() 
+            node = AwaitExpr(expr)
             node.line = token.line
             node.col = token.col
             return node

@@ -24,6 +24,7 @@ from core.types import *
 from core.ast import *
 from core.lexer import *
 from core.parser import *
+from core.preprocessor import *
 
 from runtime.interpreter import *
 from runtime.environment import *
@@ -54,6 +55,9 @@ def get_python_venv():
 
 def run_code(source):
     try:
+        preprocessor = Preprocessor()
+        source = preprocessor.process(source)
+
         lexer = Lexer(source)
         tokens = []
         while True:
@@ -79,12 +83,34 @@ def start_repl():
     print(f"{Fore.YELLOW}{COPYRIGHT}{Style.RESET_ALL}")
     
     interpreter = Interpreter()
+    preprocessor = Preprocessor()
     while True:
         try:
             text = input(f"{Fore.GREEN}lunite>{Style.RESET_ALL} ")
             if text.strip() in ["exit", "quit"]: break
+            if text.strip() == "help":
+                print("Lunite REPL Help")
+                print("----------------")
+                print()
+                print("Commands:")
+                print("  help              --> shows this help message")
+                print("  exit              --> exit the REPL")
+                print("  quit              --> same as exit")
+                print()
+                print("CLI commands:")
+                print("  <no command>      --> start Lunite REPL CLI")
+                print("  run <file.luna>   --> interpret a Lunite source code file")
+                print("  build <file.luna> --> bind and compile code into an executable")
+                print("  clean             --> deletes build directories")
+                print("  version           --> display version information")
+                print()
+                print("Visit for more info:")
+                print("  https://github.com/SubhrajitSain/Lunite")
+                print()
+                continue
             if not text.strip(): continue
-            
+
+            text = preprocessor.process(text)
             lexer = Lexer(text)
             tokens = []
             while True:
@@ -106,6 +132,10 @@ def compile_code(filename):
         print(f"Build: Opened source '{filename}' to read.")
         source = f.read()
         print(f"Build: Read source file.")
+
+    print(f"Build: Preprocessing source...")
+    preprocessor = Preprocessor()
+    source = preprocessor.process(source)
     
     this_file = os.path.abspath(__file__)
     with open(this_file, 'r') as f:

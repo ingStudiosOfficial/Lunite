@@ -1,6 +1,7 @@
 # Lunite Changelog
 
 This changelog is from version 1.8.0 onwards. v1.0.0 to v1.8.0 were during the local development phase only.  
+It is highly reccomended that you check the official documentation specified in `README.md` (repo page).
 
 *   **1.8.0** - First version of the source code on GitHub
 *   **1.8.1** - Added `else if` logic and fixed copyright message
@@ -20,3 +21,4 @@ This changelog is from version 1.8.0 onwards. v1.0.0 to v1.8.0 were during the l
 *   **1.9.5** - Postfix/prefix `++` and `--`, `assert(bool_cond, str_err_msg)` like in Python, Perl-like autovivification for dicts, STD LIB expansion
 *   **1.9.6** - `public`, `private` and `global` access specifiers, error messages colour fix, some more STD LIB expansion
 *   **SPLIT** - Lunite has been split into 9 separate files to maintain it easily.
+*   **1.9.7** - Decorators (similar to Python) using `@decorator`, Python Flask support, improved Python interop, asynchronous functions with `async func ...` and calling using `await` like in Python, C-like macros using `macro` & Preprocessor class.

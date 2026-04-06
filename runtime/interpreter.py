@@ -15,6 +15,7 @@ import getpass
 import hashlib
 import base64
 import importlib
+import asyncio
 
 from core.errors import *
 import core.constants as constants
@@ -54,12 +55,6 @@ class Interpreter:
         return target
 
     def _call_callback(self, func, args, line, col):
-        if callable(func):
-            try:
-                return func(*args)
-            except Exception as e:
-                raise lunite_error("Callback", str(e), line, col)
-
         if isinstance(func, (FunctionDef, LambdaExpr)):
             prev_env = self.env
             method_env = Environment(self.global_env) 
@@ -92,8 +87,40 @@ class Interpreter:
                 self.env = prev_env
                 constants.CURRENT_FILE = old_file
             return None
+
+        if callable(func):
+            try:
+                return func(*args)
+            except Exception as e:
+                raise lunite_error("Callback", str(e), line, col)
             
         raise lunite_error("Type", f"'{type(func).__name__}' is not callable", line, col)
+
+    def execute_node_as_call(self, func_node, args, kwargs):
+        prev_env = self.env
+        
+        closure_env = getattr(func_node, 'closure', self.global_env)
+        new_env = Environment(closure_env)
+        
+        f_params = func_node.params
+        for i, param_data in enumerate(f_params):
+            p_name = param_data[0] if isinstance(param_data, (list, tuple)) else param_data
+            
+            if i < len(args):
+                new_env.define(p_name, args[i])
+            elif isinstance(param_data, (list, tuple)) and param_data[1] is not None:
+                new_env.define(p_name, self.visit(param_data[1]))
+        self.env = new_env
+        try:
+            if isinstance(func_node.body, Block):
+                self.visit(func_node.body)
+            else:
+                return self.visit(func_node.body)
+        except ReturnException as e:
+            return e.value
+        finally:
+            self.env = prev_env
+        return None
 
     def setup_std_lib(self):
         def clean_str(val):
@@ -1049,6 +1076,37 @@ class Interpreter:
             
         self.imported_files[target_file] = module_obj
         self.env.define(alias, module_obj)
+
+    def visit_DecoratedFunc(self, node):
+        decorator = self.visit(node.decorator)
+        self.visit(node.function)
+        original_func = self.env.get(node.function.name, node.line, node.col)
+
+        if asyncio.iscoroutinefunction(original_func) or isinstance(node.function, AsyncFuncDef):
+            pass
+        
+        if callable(decorator):
+            wrapped_func = decorator(original_func)
+        elif isinstance(decorator, (FunctionDef, LambdaExpr)):
+            prev_env = self.env
+            new_env = Environment(getattr(decorator, 'closure', self.global_env))
+            if decorator.params:
+                param_name = decorator.params[0][0] if isinstance(decorator.params[0], tuple) else decorator.params[0]
+                new_env.define(param_name, original_func)
+            self.env = new_env
+            try:
+                if isinstance(decorator.body, Block):
+                    wrapped_func = self.visit(decorator.body)
+                else:
+                    wrapped_func = self.visit(decorator.body)
+            except ReturnException as e:
+                wrapped_func = e.value
+            finally:
+                self.env = prev_env
+        else:
+            raise lunite_error("Decorator", "Provided decorator is not callable", node.line, node.col)
+        self.env.assign(node.function.name, wrapped_func, node.line, node.col)
+        return wrapped_func
     
     def visit_FunctionDef(self, node):
         reserved_types = {
@@ -1061,7 +1119,37 @@ class Interpreter:
         node.source_file = constants.CURRENT_FILE
         target_env = self._get_target_env(node.is_global)
         target_env.define(node.name, node, is_public=node.is_public)
+        node.param_names = [p[0] if isinstance(p, tuple) else p for p in node.params]
+        node.closure = self.env 
+        node.interpreter = self
+        node.__name__ = node.name
+        node.__qualname__ = node.name
+        self.env.define(node.name, node)
         return node
+
+    def visit_AsyncFuncDef(self, node):
+        node.closure = self.env
+        node.__name__ = node.name
+        node.__qualname__ = node.name
+        async def async_wrapper(*args, **kwargs):
+            return self.execute_node_as_call(node, list(args), kwargs)
+        self.env.define(node.name, async_wrapper)
+        return async_wrapper
+
+    import asyncio
+
+    def visit_AwaitExpr(self, node):
+        result = self.visit(node.expr)
+        if asyncio.iscoroutine(result) or isinstance(result, asyncio.Future):
+            try:
+                loop = asyncio.get_event_loop()
+                if loop.is_running():
+                    return result
+                else:
+                    return asyncio.run(result)
+            except Exception as e:
+                raise lunite_error("Async", str(e), node.line, node.col)
+        return result
 
     def visit_ClassDef(self, node):
         node.source_file = constants.CURRENT_FILE
@@ -1104,7 +1192,8 @@ class Interpreter:
         
         if isinstance(func, (FunctionDef, LambdaExpr)):
             prev_env = self.env
-            new_env = Environment(self.global_env)
+            closure_env = getattr(func, 'closure', self.global_env)
+            new_env = Environment(closure_env)
             f_params = func.params
             
             if isinstance(func, LambdaExpr):
@@ -1368,7 +1457,14 @@ class Interpreter:
 
     def visit_MemberAccess(self, node):
         obj = self.visit(node.obj)
-        
+
+        if isinstance(obj, (FunctionDef, LambdaExpr)):
+            if node.member_name == 'name':
+                return getattr(obj, 'name', 'anonymous')
+            if node.member_name == 'params':
+                return getattr(obj, 'param_names', [])
+            if node.member_name == 'is_lambda':
+                return isinstance(obj, LambdaExpr)
         if isinstance(obj, LuniteInstance):
             return obj.get(node.member_name, node.line, node.col)
         

@@ -5,9 +5,9 @@
 
 **© Lunite by ANW (Subhrajit Sain), 2025–2026**
 
-**Version:** v1.9.6  
-**Language update date:** 29th January, 2026  
-**Documentation update date:** 29th January, 2026  
+**Version:** v1.9.7  
+**Language update date:** 6th April, 2026  
+**Documentation update date:** 6th April, 2026  
 
 </div>
 
@@ -31,7 +31,9 @@ The `stable` branch has been created. It will begin getting commits after Lunite
 
 📢 **Shout Out**  
 Shout out to **Crabby**, a modern programming language made in Rust by my friend Kazooki123 (Starlo)! 💜  
+Also, checkout **YuriLang**, an esolang made by her.  
 👉 [Click here to visit the Crabby repository](https://github.com/crabby-lang/crabby/)
+👉 [Click here to visit the YuriLang repository](https://github.com/Kazooki123/yurilang/)
 
 🌐 **Author & Contact**  
 Visit **[https://anw.is-a.dev](https://anw.is-a.dev)** for more information about the author.

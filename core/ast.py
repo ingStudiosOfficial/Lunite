@@ -88,6 +88,18 @@ class FunctionDef(AST):
     is_public: bool = True
     is_global: bool = False
     source_file: str = ""
+    interpreter: Optional[Any] = None
+
+    def __call__(self, *args, **kwargs):
+        if self.interpreter:
+            return self.interpreter.execute_node_as_call(self, list(args), kwargs)
+        else:
+            raise RuntimeError("No interpreter attached to this function")
+
+@dataclass
+class DecoratedFunc(AST):
+    decorator: AST
+    function: FunctionDef
 
 @dataclass
 class ClassDef(AST):
@@ -245,3 +257,13 @@ class UpdateExpr(AST):
     target: AST
     op: Token
     is_prefix: bool
+
+@dataclass
+class AsyncFuncDef(AST):
+    name: str
+    params: List[Tuple[str, Optional[AST]]]
+    body: AST
+
+@dataclass
+class AwaitExpr(AST):
+    expr: AST

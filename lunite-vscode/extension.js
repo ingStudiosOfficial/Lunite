@@ -25,10 +25,14 @@ function activate(context) {
                 const netChange = openCount - closeCount;
 
                 let lineIndentLevel = indentLevel;
+
+                // Handle outdent for lines starting with closing brackets
                 if (text.match(/^[\]\}\)]/)) {
                     lineIndentLevel = Math.max(0, indentLevel - 1);
-                } else if (text.startsWith("else") || text.startsWith("rescue") || text.startsWith("other")) {
-                    // intentionally left blank
+                } 
+                // Handle non-indenting structural keywords
+                else if (text.startsWith("else") || text.startsWith("rescue") || text.startsWith("other") || text.startsWith("finally")) {
+                    lineIndentLevel = Math.max(0, indentLevel - 1);
                 }
 
                 const newText = indentChar.repeat(lineIndentLevel) + text;
@@ -55,6 +59,7 @@ function stripStringsAndComments(text) {
     while (i < len) {
         const char = text[i];
         
+        // Block comment removal
         if (!inString && char === '~' && text[i+1] === '*') {
             i += 2;
             while (i < len - 1 && !(text[i] === '*' && text[i+1] === '~')) {
@@ -64,10 +69,12 @@ function stripStringsAndComments(text) {
             continue;
         }
         
+        // Line comment removal
         if (!inString && char === '~' && text[i+1] === '~') {
             break;
         }
 
+        // String state management
         if (!inString && (char === '"' || char === "'")) {
             inString = true;
             quoteChar = char;
@@ -82,16 +89,13 @@ function stripStringsAndComments(text) {
             i++;
             continue;
         }
-        
+
         if (!inString) {
             out += char;
         }
-        
         i++;
     }
     return out;
 }
 
 exports.activate = activate;
-function deactivate() {}
-exports.deactivate = deactivate;

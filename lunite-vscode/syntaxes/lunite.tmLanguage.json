@@ -100,6 +100,14 @@
     "classes": {
       "patterns": [
         {
+          "name": "meta.decorator.luna",
+          "match": "(@)([a-zA-Z_]\\w*)",
+          "captures": {
+            "1": { "name": "punctuation.definition.decorator.luna" },
+            "2": { "name": "entity.name.function.decorator.luna" }
+          }
+        },
+        {
           "match": "\\b(class)\\s+([a-zA-Z_]\\w*)\\s+(extends)\\s+([a-zA-Z_]\\w*)",
           "captures": {
             "1": { "name": "keyword.declaration.class.luna" },
@@ -128,7 +136,7 @@
       "patterns": [
         {
           "name": "keyword.control.luna",
-          "match": "\\b(if|else|while|for|in|return|break|advance|leap|attempt|rescue|finally|match|other|import|import_py|from|assert)\\b"
+          "match": "\\b(if|else|while|for|in|return|break|advance|leap|attempt|rescue|finally|match|other|import|import_py|from|assert|async|await|macro)\\b"
         },
         {
           "name": "variable.language.this.luna",

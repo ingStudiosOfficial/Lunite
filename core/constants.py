@@ -7,9 +7,9 @@ import re
 # VERSION & CONFIG
 # ==========================================
 
-LUNITE_VERSION_STR = "v1.9.6"
+LUNITE_VERSION_STR = "v1.9.7"
 COPYRIGHT          = "Copyright ANW, 2025-2026"
-LUNITE_USER_AGENT  = "Lunite/1.9.6"
+LUNITE_USER_AGENT  = "Lunite/1.9.7"
 CURRENT_FILE       = "REPL"
 
 # ==========================================
@@ -73,6 +73,7 @@ TOKEN_IS       = 'IS'
 TOKEN_SEMI     = 'SEMI'
 TOKEN_INC      = 'INC'
 TOKEN_DEC      = 'DEC'
+TOKEN_AT       = 'AT'
 
 # ==========================================
 # KEYWORDS LIST
@@ -83,5 +84,6 @@ KEYWORDS = [
     'return', 'new', 'true', 'false', 'null', 'import',
     'attempt', 'rescue', 'finally', 'extends', 'break', 'advance', 'leap',
     'match', 'other', 'and', 'or', 'not', 'const', 'import_py',
-    'enum', 'is', 'from', 'assert', 'public', 'private', 'global'
+    'enum', 'is', 'from', 'assert', 'public', 'private', 'global',
+    'async', 'await', 'macro'
 ]
