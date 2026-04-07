@@ -70,7 +70,7 @@
       ]
     },
     "functions-def": {
-      "begin": "\\b(func)\\s+([a-zA-Z_]\\w*)\\s*(\\()",
+      "begin": "\\b(func)\\s+(?:(?:public|private|global|const)\\s+)*([a-zA-Z_]\\w*)\\s*(\\()",
       "beginCaptures": {
         "1": { "name": "keyword.declaration.function.luna" },
         "2": { "name": "entity.name.function.definition.luna" },

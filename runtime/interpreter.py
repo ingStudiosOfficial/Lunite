@@ -1124,7 +1124,8 @@ class Interpreter:
         node.interpreter = self
         node.__name__ = node.name
         node.__qualname__ = node.name
-        self.env.define(node.name, node)
+        if self.env is not target_env:
+            self.env.define(node.name, node, is_public=node.is_public)
         return node
 
     def visit_AsyncFuncDef(self, node):

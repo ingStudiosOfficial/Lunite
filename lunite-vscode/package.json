@@ -1,8 +1,8 @@
 {
   "name": "lunite",
   "displayName": "The Lunite Programming Language",
-  "description": "Syntax highlighting and formatting for Lunite 1.9.7+",
-  "version": "1.3.0",
+  "description": "Syntax highlighting and formatting for Lunite 1.9.8+",
+  "version": "1.3.1",
   "publisher": "ingStudiosOfficial",
   "engines": {
     "vscode": "^1.60.0"
