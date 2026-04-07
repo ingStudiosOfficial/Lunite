@@ -5,10 +5,11 @@
 
 **© Lunite by ANW (Subhrajit Sain), 2025–2026**
 
-**Version:** v1.9.7  
-**Language update date:** 6th April, 2026  
-**Documentation update date:** 6th April, 2026  
-
+  <img src="https://img.shields.io/badge/Lunite-1.9.7-purple?style=for-the-badge" alt="Python 3.13" />
+  <img src="https://img.shields.io/badge/Python-3.x-yellow?logo=python&logoColor=skyblue&style=for-the-badge" alt="Python 3.x" />
+  <img src="https://img.shields.io/badge/Transpiles_To-C++-yellow?logo=cplusplus&logoColor=skyblue&style=for-the-badge" alt="Transpiles to C++" /><br>
+  <img src="https://img.shields.io/badge/Lang_Updated-6th_April,_2026-blue?style=for-the-badge" alt="Language updated: 6th April, 2026" />
+  <img src="https://img.shields.io/badge/Docs_Updated-6th_April,_2026-blue?style=for-the-badge" alt="Documentation updated: 6th April, 2026" /><br>
 </div>
 
 ---
