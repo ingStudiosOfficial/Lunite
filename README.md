@@ -17,17 +17,18 @@
 Lunite is a modern **hybrid programming language** that blends **Object-Oriented Programming (OOP)** and **Procedural-Oriented Programming (POP)** paradigms.  
 It supports both **interpreted execution** and **compiled ("binded") workflows**, and is built **on top of Python** for flexibility, power, and rapid development.  
 
-> [!NOTE]
-> **Do you need more speed?** Lunite now has a guide on how to transpile its interpreter into C++ for even better (2 to 3 times faster) performance! It is recommended for you to transpile the interpreter if you are seeking for good performance. Check it out in the documentation.
+> [!IMPORTANT]
+> **Do you need more speed?** Lunite now has a guide on how to transpile its interpreter into C++ for even better (2 to 3 times faster) performance! It is recommended for you to transpile the interpreter if you are seeking for good performance. Check it out in the documentation (link provided below).
 
 ✅ **Stable Branch**  
 The `stable` branch has been created. It will begin getting commits after Lunite v2.0.0.  
 👉 [Click here to visit the stable branch](https://github.com/SubhrajitSain/Lunite/tree/stable)
 
-> [!NOTE]
-> If see differences in branches, it is totally normal, and there are no issues. The `stable` branch will differ significantly from the `main` branch due to active development on `main` only.
+> [!WARNING]
+> If see differences in branches, it is totally normal, and there are no issues. The `stable` branch will differ significantly from the `main` branch due to active development on `main` only, so please do not complain about huge differences.
 
 📘 **Documentation**  
+We suggest that you check the docs out and even try making your own programs in Lunite!  
 👉 [Click here to read the official Lunite documentation](https://verbena-dream-15b.notion.site/Lunite-Docs-2e947befe6ac80b8bba0c5cca9c6aeb1)
 
 📢 **Shout Out**  
@@ -35,6 +36,9 @@ Shout out to **Crabby**, a modern programming language made in Rust by my friend
 Also, checkout **YuriLang**, an esolang made by her.  
 👉 [Click here to visit the Crabby repository](https://github.com/crabby-lang/crabby/)  
 👉 [Click here to visit the YuriLang repository](https://github.com/Kazooki123/yurilang/)  
+
+📦 **Pre-made Demos**  
+You can find pre-made Lunite demos in the `demos` folder and in `libs` (these are mostly some wrappers).  
 
 🌐 **Author & Contact**  
 Visit **[https://anw.is-a.dev](https://anw.is-a.dev)** for more information about the author.
