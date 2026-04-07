@@ -32,8 +32,8 @@ The `stable` branch has been created. It will begin getting commits after Lunite
 📢 **Shout Out**  
 Shout out to **Crabby**, a modern programming language made in Rust by my friend Kazooki123 (Starlo)! 💜  
 Also, checkout **YuriLang**, an esolang made by her.  
-👉 [Click here to visit the Crabby repository](https://github.com/crabby-lang/crabby/)
-👉 [Click here to visit the YuriLang repository](https://github.com/Kazooki123/yurilang/)
+👉 [Click here to visit the Crabby repository](https://github.com/crabby-lang/crabby/)  
+👉 [Click here to visit the YuriLang repository](https://github.com/Kazooki123/yurilang/)  
 
 🌐 **Author & Contact**  
 Visit **[https://anw.is-a.dev](https://anw.is-a.dev)** for more information about the author.
