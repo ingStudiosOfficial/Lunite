@@ -29,7 +29,7 @@ The `stable` branch has been created. It will begin getting commits after Lunite
 
 📘 **Documentation**  
 We suggest that you check the docs out and even try making your own programs in Lunite!  
-👉 [Click here to read the official Lunite documentation](https://verbena-dream-15b.notion.site/Lunite-Docs-2e947befe6ac80b8bba0c5cca9c6aeb1)
+👉 [Click here to read the official Lunite documentation](https://subhrajitsain.github.io/Lunite-website#docs/01-index.html)
 
 📢 **Shout Out**  
 Shout out to **Crabby**, a modern programming language made in Rust by my friend Kazooki123 (Starlo)! 💜  
