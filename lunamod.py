@@ -108,12 +108,7 @@ def _compile_mod(module_path):
     try:
         constants.CURRENT_FILE = module_path
         lexer = Lexer(source)
-        tokens = []
-        while True:
-            token = lexer.get_next_token()
-            tokens.append(token)
-            if token.type == constants.TOKEN_EOF:
-                break
+        tokens = list(lexer)
 
         parser = Parser(tokens)
         ast = parser.parse()

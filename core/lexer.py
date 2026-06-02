@@ -385,3 +385,10 @@ class Lexer:
             raise lunite_error("Syntax", f"Illegal character '{self.current_char}", self.line, self.col)
 
         return Token(TOKEN_EOF, None, self.line, self.col)
+
+    def __iter__(self):
+        while True:
+            token = self.get_next_token()
+            yield token
+            if token.type == TOKEN_EOF:
+                break

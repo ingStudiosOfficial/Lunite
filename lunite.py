@@ -24,6 +24,7 @@ from core.types import *
 from core.ast import *
 from core.lexer import *
 from core.parser import *
+from core.lbvm import save_bytecode, run_bytecode
 from core.preprocessor import *
 
 from runtime.interpreter import *
@@ -53,21 +54,25 @@ def get_python_venv():
 # CLI & BUILDER
 # ==========================================
 
-def run_code(source):
+def run_code(source, debug=False, sandbox=False):
     try:
         preprocessor = Preprocessor()
         source = preprocessor.process(source)
 
         lexer = Lexer(source)
-        tokens = []
-        while True:
-            tok = lexer.get_next_token()
-            tokens.append(tok)
-            if tok.type == TOKEN_EOF: break
-        
+        tokens = list(lexer)
+
         parser = Parser(tokens)
         ast = parser.parse()
-        interpreter = Interpreter()
+
+        if debug:
+            print(f"{Fore.YELLOW}[DEBUG]{Style.RESET_ALL} Tokens:")
+            for tok in tokens:
+                print(f"  {tok.type} {tok.value!r} ({tok.line}:{tok.col})")
+            print(f"{Fore.YELLOW}[DEBUG]{Style.RESET_ALL} AST:")
+            print(ast)
+
+        interpreter = Interpreter(safe_mode=sandbox, debug=debug)
         interpreter.visit(ast)
 
     except (LeapException, BreakException, AdvanceException, ReturnException) as e:
@@ -84,11 +89,17 @@ def start_repl():
     
     interpreter = Interpreter()
     preprocessor = Preprocessor()
+    buffer = []
+    prompt_main = f"{Fore.GREEN}lunite>{Style.RESET_ALL} "
+    prompt_more = f"{Fore.YELLOW}......>{Style.RESET_ALL} "
+
     while True:
         try:
-            text = input(f"{Fore.GREEN}lunite>{Style.RESET_ALL} ")
-            if text.strip() in ["exit", "quit"]: break
-            if text.strip() == "help":
+            prompt = prompt_main if not buffer else prompt_more
+            line = input(prompt)
+            if line.strip() in ["exit", "quit"]:
+                break
+            if line.strip() == "help":
                 print("Lunite REPL Help")
                 print("----------------")
                 print()
@@ -100,6 +111,9 @@ def start_repl():
                 print("CLI commands:")
                 print("  <no command>      --> start Lunite REPL CLI")
                 print("  run <file.luna>   --> interpret a Lunite source code file")
+                print("  compile <file.luna> --> compile code to .lunac")
+                print("  sandbox <file.luna> --> run code in a safe environment")
+                print("  debug <file.luna> --> run code with debug output")
                 print("  build <file.luna> --> bind and compile code into an executable")
                 print("  clean             --> deletes build directories")
                 print("  version           --> display version information")
@@ -107,25 +121,45 @@ def start_repl():
                 print("Visit for more info:")
                 print("  https://github.com/SubhrajitSain/Lunite")
                 print()
+                buffer = []
                 continue
-            if not text.strip(): continue
 
-            text = preprocessor.process(text)
-            lexer = Lexer(text)
-            tokens = []
-            while True:
-                t = lexer.get_next_token()
-                tokens.append(t)
-                if t.type == TOKEN_EOF: break
-            
-            ast = Parser(tokens).parse()
-            if isinstance(ast, Block):
-                for stmt in ast.statements:
-                    res = interpreter.visit(stmt)
-                    if res is not None:
-                        print(interpreter.global_env.values.get('str')(res))
-        except Exception as e:
-            print(str(e))
+            if line.strip() == "":
+                if not buffer:
+                    continue
+                source = "\n".join(buffer)
+                buffer = []
+            else:
+                buffer.append(line)
+                source = "\n".join(buffer)
+                brace_balance = source.count("{") - source.count("}")
+                if brace_balance > 0 or line.rstrip().endswith('\\'):
+                    continue
+                if brace_balance != 0 and not line.strip():
+                    continue
+
+            try:
+                text = preprocessor.process(source)
+                lexer = Lexer(text)
+                tokens = list(lexer)
+                ast = Parser(tokens).parse()
+
+                if isinstance(ast, Block):
+                    for stmt in ast.statements:
+                        res = interpreter.visit(stmt)
+                        if res is not None:
+                            print(interpreter.global_env.values.get('str')(res))
+                buffer = []
+            except Exception as e:
+                print(str(e))
+                buffer = []
+        except EOFError:
+            break
+        except KeyboardInterrupt:
+            print()
+            buffer = []
+            continue
+
 
 def compile_code(filename):
     with open(filename, 'r') as f:
@@ -187,6 +221,46 @@ if __name__ == "__main__":
         if os.path.exists(filename.replace('.luna', '.spec')):
             os.remove(filename.replace('.luna', '.spec'))
 
+def compile_to_bytecode(filename):
+    if not filename.lower().endswith('.luna'):
+        raise ValueError(f"Compile: Not a .luna source file: '{filename}'")
+
+    print("Compile: Reading source...")
+    with open(filename, 'r', encoding='utf-8') as f:
+        source = f.read()
+
+    print("Compile: Compiling, this may take a few seconds...")
+    preprocessor = Preprocessor()
+    source = preprocessor.process(source)
+
+    bytecode_path = filename[:-5] + '.lunac'
+    save_bytecode(bytecode_path, source, source_file=os.path.abspath(filename))
+    print(f"Compile: Compiled to bytecode file: '{bytecode_path}'")
+    return bytecode_path
+
+
+def _print_header():
+    print("The Lunite Programming Language")
+    print(LUNITE_VERSION_STR)
+    print(COPYRIGHT)
+    print("-------------------------------")
+
+
+def run_file_path(path, debug=False, sandbox=False):
+    if path.lower().endswith('.lunac'):
+        run_bytecode(path, debug=debug, sandbox=sandbox)
+        return
+
+    if not os.path.exists(path):
+        raise FileNotFoundError(f"Run: File not found: {path}")
+
+    with open(path, 'r', encoding='utf-8') as f:
+        source = f.read()
+
+    constants.CURRENT_FILE = os.path.abspath(path)
+    run_code(source, debug=debug, sandbox=sandbox)
+
+
 def clean_build():
     try:
         print("Clean: Cleaning build directories...")
@@ -202,28 +276,49 @@ def main():
         return
 
     command = sys.argv[1]
-    
-    if command == 'run':
-        if len(sys.argv) < 3:
-            print("The Lunite Programming Language")
-            print(LUNITE_VERSION_STR)
-            print(COPYRIGHT)
-            print("-------------------------------")
-            print("Run failed: File not provided.")
-            return
-        path = sys.argv[2]
-        constants.CURRENT_FILE = os.path.abspath(path)
-        if os.path.exists(path):
-            with open(path, 'r') as f:
-                run_code(f.read())
-        else:
-            print("The Lunite Programming Language")
-            print(LUNITE_VERSION_STR)
-            print(COPYRIGHT)
-            print("-------------------------------")
-            print("Run failed: File not found.")
+    path = sys.argv[2] if len(sys.argv) > 2 else None
 
-    elif command == 'build':
+    if command == 'compile':
+        if not path:
+            print("Compile: File not provided.")
+            return
+        try:
+            compile_to_bytecode(path)
+        except Exception as e:
+            print(str(e))
+        return
+
+    if command == 'run':
+        if not path:
+            print("Run: File not provided.")
+            return
+        try:
+            run_file_path(path)
+        except Exception as e:
+            print(str(e))
+        return
+
+    if command == 'sandbox':
+        if not path:
+            print("Sandbox: File not provided.")
+            return
+        try:
+            run_file_path(path, sandbox=True)
+        except Exception as e:
+            print(str(e))
+        return
+
+    if command == 'debug':
+        if not path:
+            print("Debug: File not provided.")
+            return
+        try:
+            run_file_path(path, debug=True)
+        except Exception as e:
+            print(str(e))
+        return
+
+    if command == 'build':
         print("The Lunite Programming Language")
         print(LUNITE_VERSION_STR)
         print(COPYRIGHT)
@@ -239,10 +334,10 @@ def main():
             constants.CURRENT_FILE = os.path.abspath(sys.argv[2])
             compile_code(sys.argv[2])
         elif cnt_build.lower().startswith('n'):
-            print("Build failed: Aborted by user.")
+            print("Build: Aborted by user.")
             return
         else:
-            print("Build failed: Unknown choice for continue prompt, aborting.")
+            print("Build: Unknown choice for continue prompt, aborting.")
             return
         
     elif command == 'clean':
@@ -256,30 +351,38 @@ def main():
             print("-------------------------------")
             clean_build()
         elif cnt_clean.lower().startswith('n'):
-            print("Clean failed: Aborted by user.")
+            print("Clean: Aborted by user.")
             return
         else:
-            print("Clean failed: Unknown choice for continue prompt, aborting.")
+            print("Clean: Unknown choice for continue prompt, aborting.")
             return
 
     elif command == 'version':
-        print("The Lunite Programming Language")
-        print(LUNITE_VERSION_STR)
-        print(COPYRIGHT)
-    
-    else:
-        print("The Lunite Programming Language")
-        print(LUNITE_VERSION_STR)
-        print(COPYRIGHT)
-        print("-------------------------------")
-        print(f"Unknown command '{command}'.")
+        _print_header()
+        return
+
+    if command.lower().endswith('.luna') or command.lower().endswith('.lunac'):
+        try:
+            run_file_path(command)
+        except Exception as e:
+            print(str(e))
+        return
         
-        print("\nPossible commands:")
-        print("  <no command>      --> start Lunite REPL CLI")
-        print("  run <file.luna>   --> interpret a Lunite source code file")
-        print("  build <file.luna> --> bind and compile code into an executable")
-        print("  clean             --> deletes build directories")
-        print("  version           --> display version information")
+    print("The Lunite Programming Language")
+    print(LUNITE_VERSION_STR)
+    print(COPYRIGHT)
+    print("-------------------------------")
+    print(f"Unknown command '{command}'.")
+
+    print("\nPossible commands:")
+    print("  <no command>              --> start Lunite REPL CLI")
+    print("  run <file.luna/lunac>     --> execute a Lunite source or bytecode file")
+    print("  compile <file.luna>       --> compile source to .lunac")
+    print("  sandbox <file.luna/lunac> --> run code in a safe environment")
+    print("  debug <file.luna/lunac>   --> run code with debug output")
+    print("  build <file.luna>         --> bind and compile code into an executable")
+    print("  clean                     --> deletes build directories")
+    print("  version                   --> display version information")
 
 if __name__ == "__main__":
     main()

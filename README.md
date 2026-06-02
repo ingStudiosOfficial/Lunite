@@ -5,7 +5,7 @@
 
 **© Lunite by ANW (Subhrajit Sain), 2025–2026**
 
-  <img src="https://img.shields.io/badge/Lunite-1.9.8-purple?style=for-the-badge" alt="Lunite 1.9.8" />
+  <img src="https://img.shields.io/badge/Lunite-1.9.9-purple?style=for-the-badge" alt="Lunite 1.9.9" />
   <img src="https://img.shields.io/badge/Python-3.x-yellow?logo=python&logoColor=skyblue&style=for-the-badge" alt="Python 3.x" />
   <img src="https://img.shields.io/badge/Transpiles_To-C++-yellow?logo=cplusplus&logoColor=skyblue&style=for-the-badge" alt="Transpiles to C++" /><br>
   <img src="https://img.shields.io/badge/Lang_Updated-7th_April,_2026-blue?style=for-the-badge" alt="Language updated: 7th April, 2026" />
@@ -21,7 +21,7 @@ It supports both **interpreted execution** and **compiled ("binded") workflows**
 > **Do you need more speed?** Lunite now has a guide on how to transpile its interpreter into C++ for even better (2 to 3 times faster) performance! It is recommended for you to transpile the interpreter if you are seeking for good performance. Check it out in the documentation (link provided below).
 
 ✅ **Stable Branch**  
-The `stable` branch has been created. It will begin getting commits after Lunite v2.0.0.  
+The `stable` branch has been created. It will begin getting commits after Lunite v2.0.0. We are just 1 update away!  
 👉 [Click here to visit the stable branch](https://github.com/SubhrajitSain/Lunite/tree/stable)
 
 > [!WARNING]
@@ -29,6 +29,10 @@ The `stable` branch has been created. It will begin getting commits after Lunite
 
 📘 **Documentation**  
 We suggest that you check the docs out and even try making your own programs in Lunite!  
+
+> [!WARNING]
+> Up to date for Lunite 1.9.8 only. Newer versions may not be fully documented yet.  
+
 👉 [Click here to read the official Lunite documentation](https://subhrajitsain.github.io/Lunite-website#docs/01-index.html)
 
 📢 **Shout Out**  

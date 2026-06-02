@@ -23,3 +23,4 @@ It is highly reccomended that you check the official documentation specified in 
 *   **SPLIT** - Lunite has been split into 9 separate files to maintain it easily.
 *   **1.9.7** - Decorators (similar to Python) using `@decorator`, Python Flask support, improved Python interop, asynchronous functions with `async func ...` and calling using `await` like in Python, C-like macros using `macro` & Preprocessor class.
 *   **1.9.8** - Made changes so that Python scripts can import Lunite modules using `lunamod.py` (also added), minor fixing, extension syntax highlighting fixes
+*   **1.9.9** - New Lunite Bytecode Virtual Machine (LBVM) `core/lbvm.py`, ability to compile Lunite files into bytecode (`.lunac`) and run them, minor fixes, REPL updates (like multiline, etc), debug mode, and others.

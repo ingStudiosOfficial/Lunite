@@ -11,7 +11,7 @@ from core.ast import *
 
 class Parser:
     def __init__(self, tokens):
-        self.tokens = tokens
+        self.tokens = list(tokens) if not isinstance(tokens, list) else tokens
         self.pos = 0
         self.current_token = self.tokens[self.pos]
     

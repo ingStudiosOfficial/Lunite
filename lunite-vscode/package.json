@@ -1,8 +1,8 @@
 {
   "name": "lunite",
   "displayName": "The Lunite Programming Language",
-  "description": "Syntax highlighting and formatting for Lunite 1.9.8+",
-  "version": "1.3.1",
+  "description": "Syntax highlighting, linting, and formatting for Lunite 1.9.9",
+  "version": "1.4.0",
   "publisher": "ingStudiosOfficial",
   "engines": {
     "vscode": "^1.60.0"
@@ -13,7 +13,8 @@
   ],
   "categories": [
     "Programming Languages",
-    "Formatters"
+    "Formatters",
+    "Linters"
   ],
   "contributes": {
     "languages": [
@@ -26,6 +27,15 @@
           "light": "icon.png",
           "dark": "icon.png"
         }
+      },
+      {
+        "id": "lunite-bytecode",
+        "aliases": ["Lunite Bytecode", "lunac"],
+        "extensions": [".lunac"],
+        "icon": {
+          "light": "icon-compiled.png",
+          "dark": "icon-compiled.png"
+        }
       }
     ],
     "grammars": [
@@ -34,7 +44,44 @@
         "scopeName": "source.luna",
         "path": "./syntaxes/lunite.tmLanguage.json"
       }
-    ]
+    ],
+    "commands": [
+      {
+        "command": "lunite.run",
+        "title": "Lunite: Run File",
+        "icon": "$(play)"
+      },
+      {
+        "command": "lunite.compile",
+        "title": "Lunite: Compile to Bytecode",
+        "icon": "$(file-binary)"
+      }
+    ],
+    "menus": {
+      "editor/title/run": [
+        {
+          "command": "lunite.run",
+          "when": "resourceExtname == .luna || resourceExtname == .lunac",
+          "group": "navigation"
+        }
+      ]
+    },
+    "configuration": {
+      "type": "object",
+      "title": "Lunite Extension Settings",
+      "properties": {
+        "lunite.pythonPath": {
+          "type": "string",
+          "default": "python",
+          "description": "Path to your Python 3 interpreter (e.g., 'python', 'python3', or a full path to a venv)."
+        },
+        "lunite.executablePath": {
+          "type": "string",
+          "default": "lunite.py",
+          "description": "Path to the lunite.py executable file. If relative, resolves against the current workspace."
+        }
+      }
+    }
   },
   "repository": "github:SubhrajitSain/Lunite",
   "license": "MIT",

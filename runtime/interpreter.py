@@ -16,6 +16,13 @@ import hashlib
 import base64
 import importlib
 import asyncio
+import threading
+import ctypes
+
+try:
+    import psutil
+except ImportError:
+    psutil = None
 
 from core.errors import *
 import core.constants as constants
@@ -33,17 +40,162 @@ except ImportError:
         def __getattr__(self, name): return ""
     Fore = Style = ColoramaFallback()
 
+
+class SafeModeResourceMonitor:
+    def __init__(self, interpreter):
+        self.interpreter = interpreter
+        self.stop_event = threading.Event()
+        self.prev_cpu = time.process_time()
+        self.prev_time = time.time()
+        self.prev_disk = self._get_disk_io_bytes()
+        self.prev_net = self._get_network_io_bytes()
+
+    def _get_memory_mb(self):
+        if psutil:
+            try:
+                return psutil.Process().memory_info().rss / 1024.0 / 1024.0
+            except Exception:
+                pass
+
+        if platform.system() == 'Windows':
+            try:
+                class PROCESS_MEMORY_COUNTERS(ctypes.Structure):
+                    _fields_ = [
+                        ('cb', ctypes.c_ulong),
+                        ('PageFaultCount', ctypes.c_ulong),
+                        ('PeakWorkingSetSize', ctypes.c_size_t),
+                        ('WorkingSetSize', ctypes.c_size_t),
+                        ('QuotaPeakPagedPoolUsage', ctypes.c_size_t),
+                        ('QuotaPagedPoolUsage', ctypes.c_size_t),
+                        ('QuotaPeakNonPagedPoolUsage', ctypes.c_size_t),
+                        ('QuotaNonPagedPoolUsage', ctypes.c_size_t),
+                        ('PagefileUsage', ctypes.c_size_t),
+                        ('PeakPagefileUsage', ctypes.c_size_t),
+                    ]
+                counters = PROCESS_MEMORY_COUNTERS()
+                counters.cb = ctypes.sizeof(counters)
+                kernel32 = ctypes.WinDLL('kernel32', use_last_error=True)
+                psapi = ctypes.WinDLL('psapi', use_last_error=True)
+                hProcess = kernel32.GetCurrentProcess()
+                if psapi.GetProcessMemoryInfo(hProcess, ctypes.byref(counters), counters.cb):
+                    return counters.WorkingSetSize / 1024.0 / 1024.0
+            except Exception:
+                pass
+            return 0.0
+
+        try:
+            import resource
+            return resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1024.0
+        except Exception:
+            return 0.0
+
+    def _get_disk_io_bytes(self):
+        if psutil:
+            try:
+                io = psutil.Process().io_counters()
+                return (io.read_bytes + io.write_bytes)
+            except Exception:
+                pass
+
+        try:
+            import resource
+            usage = resource.getrusage(resource.RUSAGE_SELF)
+            return (usage.ru_inblock + usage.ru_oublock) * 512
+        except Exception:
+            return 0
+
+    def _get_network_io_bytes(self):
+        if psutil:
+            try:
+                p = psutil.Process()
+                if hasattr(p, 'net_io_counters'):
+                    net = p.net_io_counters()
+                    return net.bytes_sent + net.bytes_recv
+            except Exception:
+                pass
+        return 0
+
+    def _build_reason(self, cpu_pct, memory_mb, disk_delta_mb, net_delta_mb):
+        if cpu_pct > constants.SAFE_MAX_CPU_PERCENT:
+            return f"Sandbox limit exceeded: CPU usage above {constants.SAFE_MAX_CPU_PERCENT}% ({cpu_pct:.1f}%)"
+        if memory_mb > constants.SAFE_MAX_MEMORY_MB:
+            return f"Sandbox limit exceeded: memory usage above {constants.SAFE_MAX_MEMORY_MB} MB ({memory_mb:.1f} MB)"
+        if disk_delta_mb > constants.SAFE_MAX_DISK_IO_MB:
+            return f"Sandbox limit exceeded: disk I/O above {constants.SAFE_MAX_DISK_IO_MB} MB/s ({disk_delta_mb:.2f} MB)"
+        if net_delta_mb > constants.SAFE_MAX_NETWORK_IO_MB:
+            return f"Sandbox limit exceeded: network I/O above {constants.SAFE_MAX_NETWORK_IO_MB} MB/s ({net_delta_mb:.2f} MB)"
+        return None
+
+    def _terminate(self, reason):
+        try:
+            print(f"[SANDBOX] {reason}")
+            sys.stdout.flush()
+            sys.stderr.flush()
+        except Exception:
+            pass
+        os._exit(1)
+
+    def start(self):
+        thread = threading.Thread(target=self.run, daemon=True)
+        thread.start()
+
+    def stop(self):
+        self.stop_event.set()
+
+    def run(self):
+        while not self.stop_event.wait(constants.SAFE_MONITOR_INTERVAL):
+            if not self.interpreter.safe_mode:
+                continue
+
+            now = time.time()
+            cpu_now = time.process_time()
+            elapsed = now - self.prev_time
+            if elapsed <= 0:
+                self.prev_time = now
+                continue
+
+            cpu_pct = max(0.0, (cpu_now - self.prev_cpu) / elapsed * 100.0)
+            self.prev_cpu = cpu_now
+            self.prev_time = now
+
+            memory_mb = self._get_memory_mb()
+            disk_io = self._get_disk_io_bytes()
+            net_io = self._get_network_io_bytes()
+
+            disk_delta_mb = max(0.0, (disk_io - self.prev_disk) / 1024.0 / 1024.0 / elapsed)
+            net_delta_mb = max(0.0, (net_io - self.prev_net) / 1024.0 / 1024.0 / elapsed)
+            self.prev_disk = disk_io
+            self.prev_net = net_io
+
+            reason = self._build_reason(cpu_pct, memory_mb, disk_delta_mb, net_delta_mb)
+            if reason:
+                self.interpreter.safe_violation_reason = reason
+                self._terminate(reason)
+
+
 # ==========================================
 # LUNITE INTERPRETER
 # ==========================================
 
 class Interpreter:
-    def __init__(self, imported_files=None):
+    def __init__(self, imported_files=None, safe_mode=False, debug=False):
         self.global_env = Environment()
+        self.safe_mode = bool(safe_mode)
+        self.debug = bool(debug)
+        self.safe_violation_reason = None
+        self.safe_monitor = None
         self.setup_std_lib()
         self.env = self.global_env
         self.imported_files = imported_files if imported_files else {}
         self.visit_cache = {}
+
+        if self.safe_mode:
+            self.safe_monitor = SafeModeResourceMonitor(self)
+            self.safe_monitor.start()
+
+    def debug_print(self, *args, **kwargs):
+        if self.debug:
+            print("[LUNITE DEBUG]", *args, **kwargs)
 
     def _get_target_env(self, is_global):
         if not is_global:
@@ -144,6 +296,11 @@ class Interpreter:
                     obj.constants.add(k)
             self.global_env.define(name, obj)
 
+        def register_static_lib(name, wrapper_cls, fields=None, safe=True):
+            if self.safe_mode and not safe:
+                return
+            make_static_lib(name, wrapper_cls, fields)
+
         # [ Static Libraries ]
 
         # --- File IO & System ---
@@ -201,7 +358,7 @@ class Interpreter:
             @staticmethod
             def cwd(): return os.getcwd()
         
-        make_static_lib("File", FileWrapper)
+        register_static_lib("File", FileWrapper, safe=False)
 
         # --- Network ---
         class NetWrapper:
@@ -229,7 +386,7 @@ class Interpreter:
                     urllib.request.urlretrieve(url, path)
                 except Exception as e: raise lunite_error("Net", str(e))
 
-        make_static_lib("Net", NetWrapper)
+        register_static_lib("Net", NetWrapper, safe=False)
 
         class JsonWrapper:
             @staticmethod
@@ -238,6 +395,30 @@ class Interpreter:
             def decode(s): return json.loads(s)
         
         make_static_lib("Json", JsonWrapper)
+
+        # --- Crypto ---
+        class CryptoWrapper:
+            @staticmethod
+            def sha256(value):
+                return hashlib.sha256(str(value).encode('utf-8')).hexdigest()
+            @staticmethod
+            def md5(value):
+                return hashlib.md5(str(value).encode('utf-8')).hexdigest()
+            @staticmethod
+            def hmac_sha256(key, message):
+                import hmac
+                return hmac.new(str(key).encode('utf-8'), str(message).encode('utf-8'), hashlib.sha256).hexdigest()
+            @staticmethod
+            def base64_encode(value):
+                return base64.b64encode(str(value).encode('utf-8')).decode('utf-8')
+            @staticmethod
+            def base64_decode(value):
+                try:
+                    return base64.b64decode(str(value)).decode('utf-8')
+                except Exception:
+                    return None
+
+        make_static_lib("Crypto", CryptoWrapper)
 
         # --- System ---
         class SysWrapper:
@@ -256,7 +437,7 @@ class Interpreter:
             @staticmethod
             def exit(c=0): sys.exit(int(c))
 
-        make_static_lib("Sys", SysWrapper)
+        register_static_lib("Sys", SysWrapper, safe=False)
 
         # --- Lunite Metadata ---
         class LuniteMetaWrapper:
@@ -626,6 +807,9 @@ class Interpreter:
         self.global_env.define('raise', lambda msg: (_ for _ in ()).throw(Exception(msg)))
     
     def visit(self, node):
+        if self.safe_mode and self.safe_violation_reason:
+            raise lunite_error("Sandbox", self.safe_violation_reason, getattr(node, 'line', 0), getattr(node, 'col', 0))
+
         node_type = type(node)
         method = self.visit_cache.get(node_type)
         
@@ -1057,12 +1241,7 @@ class Interpreter:
         
         try:
             lexer = Lexer(code)
-            tokens = []
-            while True:
-                t = lexer.get_next_token()
-                tokens.append(t)
-                if t.type == TOKEN_EOF: break
-            
+            tokens = list(lexer)
             parser = Parser(tokens)
             ast = parser.parse()
             self.visit(ast)

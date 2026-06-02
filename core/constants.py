@@ -7,10 +7,19 @@ import re
 # VERSION & CONFIG
 # ==========================================
 
-LUNITE_VERSION_STR = "v1.9.7"
+LUNITE_VERSION_STR = "v1.9.9"
 COPYRIGHT          = "Copyright ANW, 2025-2026"
-LUNITE_USER_AGENT  = "Lunite/1.9.7"
+LUNITE_USER_AGENT  = "Lunite/1.9.9"
 CURRENT_FILE       = "REPL"
+
+# ==========================================
+# SANDBOX RESOURCE LIMITS
+# ==========================================
+SAFE_MAX_CPU_PERCENT        = 80.0   # percent of a single CPU core
+SAFE_MAX_MEMORY_MB          = 256.0  # maximum resident memory in megabytes
+SAFE_MAX_DISK_IO_MB         = 20.0   # disk I/O delta in megabytes per interval
+SAFE_MAX_NETWORK_IO_MB      = 5.0    # network I/O delta in megabytes per interval
+SAFE_MONITOR_INTERVAL       = 0.2    # seconds between resource checks
 
 # ==========================================
 # PRE-COMPILED REGEX
