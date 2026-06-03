@@ -1362,14 +1362,6 @@ class Interpreter:
     def visit_FunctionCall(self, node):
         func = self.env.get(node.name, node.line, node.col)
         
-        if callable(func):
-            try:
-                pos_args, kw_args = self._evaluate_arguments(node.args)
-                return func(*pos_args, **kw_args)
-            except Exception as e:
-                if hasattr(e, "has_location") and e.has_location: raise e
-                raise lunite_error("Function", str(e), node.line, node.col)
-        
         if isinstance(func, (FunctionDef, LambdaExpr)):
             prev_env = self.env
             closure_env = getattr(func, 'closure', self.global_env)
@@ -1412,6 +1404,14 @@ class Interpreter:
                 self.env = prev_env
                 constants.CURRENT_FILE = old_file
             return None
+        
+        if callable(func):
+            try:
+                pos_args, kw_args = self._evaluate_arguments(node.args)
+                return func(*pos_args, **kw_args)
+            except Exception as e:
+                if hasattr(e, "has_location") and e.has_location: raise e
+                raise lunite_error("Function", str(e), node.line, node.col)
         
         raise lunite_error("Function", f"'{node.name}' is not a function", node.line, node.col)
 
@@ -1566,13 +1566,6 @@ class Interpreter:
         
         if isinstance(obj, LuniteInstance):
             method = obj.methods.get(node.method_name)
-            
-            if method and callable(method):
-                try:
-                    pos_args, kw_args = self._evaluate_arguments(node.args)
-                    return method(*pos_args, **kw_args)
-                except Exception as e:
-                     raise lunite_error("Method", str(e), node.line, node.col)
 
             if method and isinstance(method, FunctionDef):
                 prev_env = self.env
@@ -1611,6 +1604,13 @@ class Interpreter:
                     self.env = prev_env
                     constants.CURRENT_FILE = old_file
                 return None
+
+            if method and callable(method):
+                try:
+                    pos_args, kw_args = self._evaluate_arguments(node.args)
+                    return method(*pos_args, **kw_args)
+                except Exception as e:
+                     raise lunite_error("Method", str(e), node.line, node.col)
 
             field = obj.fields.get(node.method_name)
             if field and callable(field):
