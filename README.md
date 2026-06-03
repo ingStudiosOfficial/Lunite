@@ -28,10 +28,7 @@ The `stable` branch has been created. It will begin getting commits after Lunite
 > If see differences in branches, it is totally normal, and there are no issues. The `stable` branch will differ significantly from the `main` branch due to active development on `main` only, so please do not complain about huge differences.
 
 📘 **Documentation**  
-We suggest that you check the docs out and even try making your own programs in Lunite!  
-
-> [!WARNING]
-> Up to date for Lunite 1.9.8 only. Newer versions may not be fully documented yet.  
+We suggest that you check the docs out and even try making your own programs in Lunite!   
 
 👉 [Click here to read the official Lunite documentation](https://subhrajitsain.github.io/Lunite-website#docs/01-index.html)
 
