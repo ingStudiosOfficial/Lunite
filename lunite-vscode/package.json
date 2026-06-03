@@ -58,11 +58,16 @@
       }
     ],
     "menus": {
-      "editor/title/run": [
+      "editor/title": [
         {
           "command": "lunite.run",
           "when": "resourceExtname == .luna || resourceExtname == .lunac",
-          "group": "navigation"
+          "group": "navigation@1"
+        },
+        {
+          "command": "lunite.compile",
+          "when": "resourceExtname == .luna",
+          "group": "navigation@2"
         }
       ]
     },
