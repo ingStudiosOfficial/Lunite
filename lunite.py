@@ -373,6 +373,7 @@ def main():
         if cnt_clean.lower().startswith('y'):
             print("-------------------------------")
             clean_build()
+            return
         elif cnt_clean.lower().startswith('n'):
             print("Clean: Aborted by user.")
             return
