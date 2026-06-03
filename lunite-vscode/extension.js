@@ -123,7 +123,7 @@ function executeCommand(action, uri) {
 
     const term = getTerminal();
     term.show();
-    term.sendText(`"${pythonPath}" "${lunitePath}" ${action} "${filePath}"`);
+    term.sendText(`${pythonPath} "${lunitePath}" ${action} "${filePath}"`);
 }
 
 function stripAnsi(text) {
