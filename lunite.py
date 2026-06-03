@@ -174,7 +174,7 @@ def build_native(bytecode_file):
 
     print("Build: Verifying bytecode with LBVM...")
     try:
-        load_bytecode(bytecode_file)
+        program, _ = load_bytecode(bytecode_file)
     except Exception as e:
         raise RuntimeError(f"Build: Invalid bytecode file: {e}")
 
@@ -189,7 +189,12 @@ def build_native(bytecode_file):
     except Exception:
         raise RuntimeError(f"Build: PyInstaller is not installed for {py_bin}, install it with: 'pip install pyinstaller'")
 
-    print("Build: Reading bytecode...")
+    print("Build: Reading bytecode and auto-detecting python dependencies...")
+    py_modules = detect_python_imports(program)
+    extra_args = []
+    for mod in py_modules:
+        extra_args += ["--collect-all", mod]
+
     with open(bytecode_file, "rb") as f:
         payload = f.read()
 
@@ -221,7 +226,14 @@ if __name__ == "__main__":
 
     try:
         print("Build: Building with PyInstaller, this might take a moment...")
-        subprocess.check_call([py_bin, "-m", "PyInstaller", "--onefile", "--collect-submodules=core", "--collect-submodules=runtime", "--distpath", "dist", "--workpath", "build", "--name", exe_name, launcher])
+        pyi_cmd = [
+            py_bin, "-m", "PyInstaller", "--onefile", 
+            "--collect-submodules=core", "--collect-submodules=runtime", 
+            "--distpath", "dist", "--workpath", "build", 
+            "--name", exe_name, launcher
+        ] + extra_args
+        
+        subprocess.check_call(pyi_cmd)
         print("Build: Successful! Build files are in `./build`, and binary is in `./dist`")
     except Exception as e:
         print(f"Build: Failed to build, error: {str(e)}")

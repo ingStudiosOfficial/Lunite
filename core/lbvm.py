@@ -891,6 +891,29 @@ def load_bytecode(path):
     return program, program.source_file
 
 
+def detect_python_imports(program):
+    modules = set()
+    
+    def scan(instructions, consts):
+        for opcode, arg in instructions:
+            if opcode == OP_IMPORT_PY and arg:
+                mod_name = arg[0]
+                if mod_name:
+                    root_mod = mod_name.split('.')[0]
+                    modules.add(root_mod)
+                    
+        for const in consts:
+            if isinstance(const, FunctionObject):
+                scan(const.instructions, const.consts)
+            elif isinstance(const, tuple) and len(const) == 3 and const[0] == '__lunite_class__':
+                class_dict = const[2]
+                if isinstance(class_dict, dict):
+                    scan(class_dict.get('instructions', []), class_dict.get('consts', []))
+                    
+    scan(program.instructions, program.consts)
+    return list(modules)
+
+
 def run_bytecode(path, debug=False, sandbox=False):
     program, source_file = load_bytecode(path)
     old_file = constants.CURRENT_FILE
