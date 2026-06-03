@@ -37,7 +37,7 @@ from runtime.environment import *
 def get_python_venv():
     print("Venv: Detecting python binary...")
     if sys.prefix != getattr(sys, "base_prefix", sys.prefix):
-        print(f"Venv: Using system executable '{sys.executable}'")
+        print(f"Venv: Using active venv executable '{sys.executable}'")
         return sys.executable
 
     cwd = os.getcwd()
@@ -178,7 +178,7 @@ def build_native(bytecode_file):
     except Exception as e:
         raise RuntimeError(f"Build: Invalid bytecode file: {e}")
 
-    print("Build: Searching for python binary...")
+    print("Build: Searching for python binary across system and venvs...")
     py_bin = get_python_venv()
 
     try:
@@ -221,7 +221,7 @@ if __name__ == "__main__":
 
     try:
         print("Build: Building with PyInstaller, this might take a moment...")
-        subprocess.check_call([py_bin, "-m", "PyInstaller", "--onefile", "--collect-submodules=core", "--collect-submodules=runtime", "--name", exe_name, launcher])
+        subprocess.check_call([py_bin, "-m", "PyInstaller", "--onefile", "--collect-submodules=core", "--collect-submodules=runtime", "--distpath", "dist", "--workpath", "build", "--name", exe_name, launcher])
         print("Build: Successful! Build files are in `./build`, and binary is in `./dist`")
     except Exception as e:
         print(f"Build: Failed to build, error: {str(e)}")
@@ -230,11 +230,12 @@ if __name__ == "__main__":
             print("Tip: If PyInstaller is installed in a venv, try activating it or creating a venv folder named 'venv', '.venv' or 'env'.")
         else:
             print("Tip: A venv (in 'venv', '.venv' or 'env' folder) was used to build your executable.")
-        spec = launcher.replace(".py", ".spec")
+        spec = os.path.splitext(launcher)[0] + ".spec"
         if os.path.exists(launcher):
             os.remove(launcher)
         if os.path.exists(spec):
             os.remove(spec)
+        shutil.rmtree("__pycache__", ignore_errors=True)
 
 def compile_to_bytecode(filename):
     if not filename.lower().endswith('.luna'):
@@ -278,9 +279,15 @@ def run_file_path(path, debug=False, sandbox=False):
 
 def clean_build():
     try:
-        print("Clean: Cleaning build directories...")
-        for folder in ("build", "dist"):
+        print("Clean: Cleaning...")
+        for folder in ("build", "dist", "__pycache__"):
             shutil.rmtree(folder, ignore_errors=True)
+        for file in os.listdir("."):
+            if file.endswith(".spec"):
+                try:
+                    os.remove(file)
+                except OSError:
+                    pass
         print("Clean: Cleanup successful.")
     except Exception as e:
         print(f"Clean error: {e}")
@@ -360,7 +367,7 @@ def main():
         print(LUNITE_VERSION_STR)
         print(COPYRIGHT)
         print("-------------------------------")
-        print("WARNING: Cleaning will remove the directories './build' and './dist'.")
+        print("WARNING: Cleaning will remove the directories './build', './dist' and `./__pycache__` and `*.spec` files.")
         cnt_clean = input("Continue with clean? [Y/N]: ")
         if cnt_clean.lower().startswith('y'):
             print("-------------------------------")
