@@ -35,7 +35,7 @@ The `stable` branch has been created. It will begin getting commits after Lunite
 👉 [Click here to visit the stable branch](https://github.com/SubhrajitSain/Lunite/tree/stable)
 
 > [!WARNING]
-> If see differences in branches, it is totally normal, and there are no issues. The `stable` branch will differ significantly from the `main` branch due to active development on `main` only, so please do not complain about huge differences.
+> If you see differences in branches, it is totally normal, and there are no issues. The `stable` branch will differ significantly from the `main` branch due to active development on `main` only, so please do not complain about huge differences.
 
 📘 **Documentation**  
 We suggest that you check the docs out and even try making your own programs in Lunite!   
