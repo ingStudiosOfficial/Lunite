@@ -5,7 +5,7 @@ This extension provides syntax highlighting, code formatting, linting, and integ
 ## ✨ New in Version 1.4.0
 *   **Live Linting & Diagnostics:** Catch syntax and structural errors instantly on save. Errors are highlighted with red squiggly lines directly in your code!
 *   **Hover Documentation:** Hover your mouse over standard library components (like `Math`, `File`, `Random`, `out`, etc.) to see markdown documentation and code examples. Please note that this feature is incomplete.
-*   **Editor Action Buttons:** Run or compile your Lunite code instantly using the new Play (`▶`-like play button) and Compile (`⚙`-like cog button) buttons located in the top-right corner of the editor.
+*   **Editor Action Buttons:** Run or compile your Lunite code instantly using the new Play (`▶`-like play button) and Compile (binary file-like button) buttons located in the top-right corner of the editor.
 *   **Bytecode Support:** Official file recognition and custom icons for compiled `.lunac` files.
 
 ## Features
