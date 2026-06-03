@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # /== == == == == == == == == == ==\
-# |==  LUNITE - v1.9.6 - by ANW  ==|
+# |==  LUNITE - v1.9.9 - by ANW  ==|
 # \== == == == == == == == == == ==/
 
 import sys
@@ -8,7 +8,6 @@ import os
 import shutil
 import platform
 import subprocess
-import json
 import uuid
 try:
     from colorama import init, Fore, Style
@@ -36,11 +35,14 @@ from runtime.environment import *
 # ==========================================
 
 def get_python_venv():
+    print("Venv: Detecting python binary...")
     if sys.prefix != getattr(sys, "base_prefix", sys.prefix):
+        print(f"Venv: Using system executable '{sys.executable}'")
         return sys.executable
 
     cwd = os.getcwd()
     is_win = platform.system() == "Windows"
+    print(f"Venv: Operating system: {platform.system()}")
 
     for name in ("venv", ".venv", "env"):
         if is_win:
@@ -49,8 +51,10 @@ def get_python_venv():
             py = os.path.join(cwd, name, "bin", "python")
 
         if os.path.isfile(py):
+            print(f"Venv: Using venv executable '{py}'")
             return py
 
+    print(f"Venv: No venv detected, using system executable '{sys.executable}'")
     return sys.executable
 
 # ==========================================
@@ -83,8 +87,6 @@ def run_code(source, debug=False, sandbox=False):
     except Exception as e:
         print(str(e))
 
-# [RUNTIME BINDED CODE END]
-
 def start_repl():
     constants.CURRENT_FILE = "REPL"
     print(f"{Fore.CYAN}Lunite {LUNITE_VERSION_STR} REPL CLI{Style.RESET_ALL}")
@@ -107,19 +109,19 @@ def start_repl():
                 print("----------------")
                 print()
                 print("Commands:")
-                print("  help              --> shows this help message")
-                print("  exit              --> exit the REPL")
-                print("  quit              --> same as exit")
+                print("  help                  --> shows this help message")
+                print("  exit                  --> exit the REPL")
+                print("  quit                  --> same as exit")
                 print()
                 print("CLI commands:")
-                print("  <no command>      --> start Lunite REPL CLI")
-                print("  run <file.luna>   --> interpret a Lunite source code file")
-                print("  compile <file.luna> --> compile code to .lunac")
-                print("  sandbox <file.luna> --> run code in a safe environment")
-                print("  debug <file.luna> --> run code with debug output")
-                print("  build <file.luna> --> bind and compile code into an executable")
-                print("  clean             --> deletes build directories")
-                print("  version           --> display version information")
+                print("  <no command>              --> start Lunite REPL CLI")
+                print("  run <file.luna/lunac>     --> execute a Lunite source or bytecode file")
+                print("  compile <file.luna>       --> compile code to .lunac")
+                print("  sandbox <file.luna/lunac> --> run code in a safe environment")
+                print("  debug <file.luna/lunac>   --> run code with debug output")
+                print("  build <file.lunac>        --> bind and compile code into an executable")
+                print("  clean                     --> deletes build directories")
+                print("  version                   --> display version information")
                 print()
                 print("Visit for more info:")
                 print("  https://github.com/SubhrajitSain/Lunite")
@@ -171,22 +173,29 @@ def build_native(bytecode_file):
         raise FileNotFoundError(f"Build: File not found: '{bytecode_file}'")
 
     print("Build: Verifying bytecode with LBVM...")
-    tmp_prg, tmp_src = load_bytecode(bytecode_file)
+    try:
+        load_bytecode(bytecode_file)
+    except Exception as e:
+        raise RuntimeError(f"Build: Invalid bytecode file: {e}")
 
-    print("Build: Searching for installed python binary...")
+    print("Build: Searching for python binary...")
     py_bin = get_python_venv()
 
     try:
-        import PyInstaller
-    except ImportError:
-        raise RuntimeError("Build: PyInstaller is required. Install it with: 'pip install pyinstaller'")
+        subprocess.check_output(
+            [py_bin, "-m", "PyInstaller", "--version"],
+            stderr=subprocess.STDOUT
+        )
+    except Exception:
+        raise RuntimeError(f"Build: PyInstaller is not installed for {py_bin}, install it with: 'pip install pyinstaller'")
 
     print("Build: Reading bytecode...")
     with open(bytecode_file, "rb") as f:
         payload = f.read()
 
-    launcher = f"{os.path.splitext(bytecode_file)[0]}_{uuid.uuid4()}.py"
-    print(f"Build: Creating intermediate file {launcher}")
+    launcher = f"{os.path.splitext(bytecode_file)[0]}_{uuid.uuid4().hex}.py"
+    exe_name = os.path.splitext(os.path.basename(bytecode_file))[0]
+    print(f"Build: Creating intermediate file '{launcher}'...")
 
     with open(launcher, "w", encoding="utf-8") as f:
         f.write(
@@ -206,13 +215,13 @@ if __name__ == "__main__":
         run_bytecode(p)
     finally:
         try: os.remove(p)
-        except: pass
+        except OSError: pass
 '''
         )
 
     try:
         print("Build: Building with PyInstaller, this might take a moment...")
-        subprocess.check_call([py_bin, "-m", "PyInstaller", "--onefile", launcher])
+        subprocess.check_call([py_bin, "-m", "PyInstaller", "--onefile", "--collect-submodules=core", "--collect-submodules=runtime", "--name", exe_name, launcher])
         print("Build: Successful! Build files are in `./build`, and binary is in `./dist`")
     except Exception as e:
         print(f"Build: Failed to build, error: {str(e)}")
