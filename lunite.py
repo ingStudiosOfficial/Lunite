@@ -9,6 +9,7 @@ import shutil
 import platform
 import subprocess
 import json
+import uuid
 try:
     from colorama import init, Fore, Style
     init(autoreset=True)
@@ -24,7 +25,7 @@ from core.types import *
 from core.ast import *
 from core.lexer import *
 from core.parser import *
-from core.lbvm import save_bytecode, run_bytecode
+from core.lbvm import *
 from core.preprocessor import *
 
 from runtime.interpreter import *
@@ -35,19 +36,21 @@ from runtime.environment import *
 # ==========================================
 
 def get_python_venv():
+    if sys.prefix != getattr(sys, "base_prefix", sys.prefix):
+        return sys.executable
+
     cwd = os.getcwd()
-    venv_names = ["venv", ".venv", "env"]
     is_win = platform.system() == "Windows"
-    
-    for venv in venv_names:
+
+    for name in ("venv", ".venv", "env"):
         if is_win:
-            path = os.path.join(cwd, venv, "Scripts", "python.exe")
+            py = os.path.join(cwd, name, "Scripts", "python.exe")
         else:
-            path = os.path.join(cwd, venv, "bin", "python")
-            
-        if os.path.exists(path):
-            return path
-            
+            py = os.path.join(cwd, name, "bin", "python")
+
+        if os.path.isfile(py):
+            return py
+
     return sys.executable
 
 # ==========================================
@@ -160,66 +163,69 @@ def start_repl():
             buffer = []
             continue
 
+def build_native(bytecode_file):
+    if not bytecode_file.lower().endswith(".lunac"):
+        raise ValueError(f"Build: Not a .lunac bytecode file: '{bytecode_file}'")
 
-def compile_code(filename):
-    with open(filename, 'r') as f:
-        print(f"Build: Opened source '{filename}' to read.")
-        source = f.read()
-        print(f"Build: Read source file.")
+    if not os.path.isfile(bytecode_file):
+        raise FileNotFoundError(f"Build: File not found: '{bytecode_file}'")
 
-    print(f"Build: Preprocessing source...")
-    preprocessor = Preprocessor()
-    source = preprocessor.process(source)
-    
-    this_file = os.path.abspath(__file__)
-    with open(this_file, 'r') as f:
-        print(f"Build: Reading Lunite engine source: {this_file}")
-        engine_code = f.read()
-        print(f"Build: Read Lunite engine source.")
+    print("Build: Verifying bytecode with LBVM...")
+    tmp_prg, tmp_src = load_bytecode(bytecode_file)
 
-    print(f"Build: Sanitizing Lunite...")
-    engine_code = engine_code.split("# [RUNTIME BINDED CODE END]")[0]
-    print(f"Build: Lunite has been cleaned.")
+    print("Build: Searching for installed python binary...")
+    py_bin = get_python_venv()
 
-    print(f"Build: Creating proper loader code...")
-    loader_code = f"""
-{engine_code}
+    try:
+        import PyInstaller
+    except ImportError:
+        raise RuntimeError("Build: PyInstaller is required. Install it with: 'pip install pyinstaller'")
+
+    print("Build: Reading bytecode...")
+    with open(bytecode_file, "rb") as f:
+        payload = f.read()
+
+    launcher = f"{os.path.splitext(bytecode_file)[0]}_{uuid.uuid4()}.py"
+    print(f"Build: Creating intermediate file {launcher}")
+
+    with open(launcher, "w", encoding="utf-8") as f:
+        f.write(
+            f'''
+import os
+import tempfile
+from core.lbvm import run_bytecode
+
+BYTECODE = {payload!r}
 
 if __name__ == "__main__":
-    source_code = {json.dumps(source)}
-    run_code(source_code)
-"""
-    print(f"Build: Created proper loader code.")
-
-    dist_file = filename.replace('.luna', '.py')
-    with open(dist_file, 'w') as f:
-        print(f"Build: Writing loader code to '{dist_file}'")
-        f.write(loader_code)
-    
-    print(f"Build: Created intermediate {dist_file}")
-    
-    py_bin = get_python_venv()
-    if py_bin != sys.executable:
-        print(f"Build: Detected virtual environment. Using: {py_bin}")
-    else:
-        print(f"Build: Venv not detected, using system python: {py_bin}")
-        
-    print("Build: Compiling with PyInstaller, this might take some time...")
-    
+    f, p = tempfile.mkstemp(suffix=".lunac")
+    os.close(f)
     try:
-        subprocess.check_call([py_bin, "-m", "PyInstaller", "--onefile", dist_file])
-        print(f"Build: Success! Executable should be in the 'dist' folder.")
+        with open(p, "wb") as bc:
+            bc.write(BYTECODE)
+        run_bytecode(p)
+    finally:
+        try: os.remove(p)
+        except: pass
+'''
+        )
+
+    try:
+        print("Build: Building with PyInstaller, this might take a moment...")
+        subprocess.check_call([py_bin, "-m", "PyInstaller", "--onefile", launcher])
+        print("Build: Successful! Build files are in `./build`, and binary is in `./dist`")
     except Exception as e:
-        print(f"Build: Compilation failed: {e}")
+        print(f"Build: Failed to build, error: {str(e)}")
     finally:
         if py_bin == sys.executable:
             print("Tip: If PyInstaller is installed in a venv, try activating it or creating a venv folder named 'venv', '.venv' or 'env'.")
         else:
             print("Tip: A venv (in 'venv', '.venv' or 'env' folder) was used to build your executable.")
-        if os.path.exists(dist_file):
-            os.remove(dist_file)
-        if os.path.exists(filename.replace('.luna', '.spec')):
-            os.remove(filename.replace('.luna', '.spec'))
+        spec = launcher.replace(".py", ".spec")
+        if os.path.exists(launcher):
+            os.remove(launcher)
+        if os.path.exists(spec):
+            os.remove(spec)
 
 def compile_to_bytecode(filename):
     if not filename.lower().endswith('.luna'):
@@ -264,8 +270,8 @@ def run_file_path(path, debug=False, sandbox=False):
 def clean_build():
     try:
         print("Clean: Cleaning build directories...")
-        shutil.rmtree("./build", ignore_errors=False)
-        shutil.rmtree("./dist", ignore_errors=False)
+        for folder in ("build", "dist"):
+            shutil.rmtree(folder, ignore_errors=True)
         print("Clean: Cleanup successful.")
     except Exception as e:
         print(f"Clean error: {e}")
@@ -332,7 +338,7 @@ def main():
                 return
             print("-------------------------------")
             constants.CURRENT_FILE = os.path.abspath(sys.argv[2])
-            compile_code(sys.argv[2])
+            build_native(sys.argv[2])
         elif cnt_build.lower().startswith('n'):
             print("Build: Aborted by user.")
             return
@@ -380,7 +386,7 @@ def main():
     print("  compile <file.luna>       --> compile source to .lunac")
     print("  sandbox <file.luna/lunac> --> run code in a safe environment")
     print("  debug <file.luna/lunac>   --> run code with debug output")
-    print("  build <file.luna>         --> bind and compile code into an executable")
+    print("  build <file.lunac>        --> bind and compile bytecode into an executable")
     print("  clean                     --> deletes build directories")
     print("  version                   --> display version information")
 
