@@ -263,7 +263,7 @@ def _print_header():
 
 
 def run_file_path(path, debug=False, sandbox=False):
-    if path.lower().endswith('.lunac'):
+    if path.lower().endswith('.lunac') and os.path.exists(path):
         run_bytecode(path, debug=debug, sandbox=sandbox)
         return
 
