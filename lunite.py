@@ -355,6 +355,7 @@ def main():
             print("-------------------------------")
             constants.CURRENT_FILE = os.path.abspath(sys.argv[2])
             build_native(sys.argv[2])
+            return
         elif cnt_build.lower().startswith('n'):
             print("Build: Aborted by user.")
             return
